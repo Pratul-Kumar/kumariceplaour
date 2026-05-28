@@ -134,11 +134,12 @@
    ============================================================ */
 @layer utilities {
   .animate-fade-in {
-    animation: fade-in 0.3s ease-out;
+    /* Use opacity+transform only — GPU composited, zero layout cost */
+    animation: fade-in 0.15s ease-out both;
   }
 
   .animate-slide-in {
-    animation: slide-in 0.3s ease-out;
+    animation: slide-in 0.2s ease-out both;
   }
 
   .pb-safe {
@@ -172,6 +173,19 @@
 }
 
 /* ============================================================
+   KEYFRAMES
+   ============================================================ */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ============================================================
    RECHARTS THEME
    ============================================================ */
 .recharts-tooltip-wrapper {
@@ -183,11 +197,29 @@
 }
 
 /* ============================================================
-   PERFORMANCE UTILITIES
+   PERFORMANCE
    ============================================================ */
-/* GPU-accelerated transitions for common interactive elements */
-.transition-all,
-.transition-colors,
-.transition-transform {
-  will-change: auto;
+/* Only promote elements that actually animate to GPU layers */
+.animate-spin,
+.animate-pulse,
+.animate-fade-in,
+.animate-slide-in {
+  will-change: transform, opacity;
+}
+
+/* Contain layout for major page sections to reduce paint areas */
+[data-page-content] {
+  contain: layout style;
+}
+
+/* Prefers reduced motion: respect OS setting */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-slide-in,
+  .transition-all,
+  .transition-colors,
+  .transition-transform {
+    animation: none !important;
+    transition: none !important;
+  }
 }

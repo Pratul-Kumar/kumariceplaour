@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { LayoutDashboard, Users, Receipt, IndianRupee, CalendarOff,
   HardHat, Settings, X, Menu, TrendingUp, Bell, Sun, Moon, ClipboardCheck, LogOut, Cloud, CloudOff
@@ -98,7 +98,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors group",
                   isActive
                     ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
                     : "text-muted-foreground hover:bg-accent hover:text-foreground"

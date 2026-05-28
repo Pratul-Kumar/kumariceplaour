@@ -65,42 +65,47 @@ export function SalaryManagement() {
   const watchedExtra = watchGen("extraDeduction");
 
   useEffect(() => {
+    // Staff subscription is stable — mount once and keep alive
+    const unsubStaff = staffService.subscribeAll((data) => setStaffList(data));
+    return () => unsubStaff();
+  }, []);
+
+  useEffect(() => {
     setLoading(true);
     let active = true;
-
-    const unsubStaff = staffService.subscribeAll((data) => {
-      if (active) setStaffList(data);
-    });
-    
     const [yearStr, monthStr] = filterMonth.split("-");
-    const unsubRecords = salaryService.subscribeByMonth(Number(monthStr), Number(yearStr), async (data) => {
+
+    const unsubRecords = salaryService.subscribeByMonth(Number(monthStr), Number(yearStr), (data) => {
       if (!active) return;
       setRecords(data);
-      
-      const pm: Record<string, SalaryPayment[]> = {};
-      try {
-        await Promise.all(
-          data.map(async (r) => {
-            const payments = await salaryService.getPaymentsForRecord(r.id!);
-            pm[r.id!] = payments;
-          })
-        );
-      } catch (err) {
-        console.error("Failed to load salary payments", err);
-      }
 
-      if (active) {
-        setPaymentsMap(pm);
-        setLoading(false);
-      }
+      // Only fetch payments for records we don't have cached yet
+      setPaymentsMap(prev => {
+        const missing = data.filter(r => r.id && !(r.id in prev));
+        if (missing.length === 0) { setLoading(false); return prev; }
+
+        Promise.all(
+          missing.map(r => salaryService.getPaymentsForRecord(r.id!).then(p => [r.id!, p] as const))
+        ).then(entries => {
+          if (!active) return;
+          setPaymentsMap(prev2 => {
+            const next = { ...prev2 };
+            entries.forEach(([id, pays]) => { next[id] = pays; });
+            return next;
+          });
+          setLoading(false);
+        }).catch(() => setLoading(false));
+
+        return prev; // Return current map immediately; update async above
+      });
     });
 
     return () => {
       active = false;
-      unsubStaff();
       unsubRecords();
     };
   }, [filterMonth]);
+
 
   // Live salary preview
   useEffect(() => {

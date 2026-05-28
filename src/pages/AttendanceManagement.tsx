@@ -34,30 +34,38 @@ export function AttendanceManagement() {
   
   const { toast } = useToast();
 
+  // Derive the query month ONLY from data that actually changes the Firestore query.
+  // viewMode is a display toggle — it must NOT trigger a re-subscription.
+  const queryMonth = useMemo(() => {
+    if (viewMode === "daily") return selectedDate.substring(0, 7);
+    return month;
+  }, [month, selectedDate, viewMode]);
+
+  // Staff subscription — stable, only mounts once
+  useEffect(() => {
+    const unsubStaff = staffService.subscribeAll((data) => {
+      setStaff(data.filter(s => s.status === "active"));
+    });
+    return () => unsubStaff();
+  }, []);
+
+  // Attendance subscription — only re-fires when the actual month changes
   useEffect(() => {
     setLoading(true);
     let active = true;
-
-    const unsubStaff = staffService.subscribeAll((data) => {
-      if (active) setStaff(data.filter(s => s.status === "active"));
-    });
-
-    const queryMonth = viewMode === "monthly" ? month : selectedDate.substring(0, 7);
     const unsubAtt = attendanceService.subscribeByMonth(queryMonth, (data) => {
       if (active) {
         setAttendance(data);
         setLoading(false);
       }
     });
-
     return () => {
       active = false;
-      unsubStaff();
       unsubAtt();
     };
-  }, [month, selectedDate, viewMode]);
+  }, [queryMonth]);
 
-  // Sync month and date pickers logically
+  // Sync month picker when date picker changes in daily mode
   useEffect(() => {
     if (selectedDate && viewMode === "daily") {
       setMonth(selectedDate.substring(0, 7));
