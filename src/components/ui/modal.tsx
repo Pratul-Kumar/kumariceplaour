@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "./index";
@@ -21,8 +22,8 @@ export function Modal({ open, onClose, title, description, children, className }
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={onClose} />
       <div
         className={cn(
@@ -43,10 +44,12 @@ export function Modal({ open, onClose, title, description, children, className }
             </button>
           </div>
         )}
-        <div className="p-6">{children}</div>
+        <div className="p-6 pb-8 sm:pb-6">{children}</div>
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
 
 interface ConfirmDialogProps {
