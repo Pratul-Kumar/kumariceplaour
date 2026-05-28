@@ -1,11 +1,6 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import {
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-  CACHE_SIZE_UNLIMITED,
-} from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -20,24 +15,19 @@ const firebaseConfig = {
 export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Firestore with IndexedDB persistence.
+// Use default Firestore (memory cache only, no IndexedDB persistence).
 //
-// How cross-device sync works:
-//   • All collections use onSnapshot() listeners — these are ALWAYS kept in sync
-//     with the Firestore server when the device is online. Cross-device updates
-//     arrive typically within 1-2 seconds via the WebSocket channel.
-//   • persistentLocalCache means the FIRST render is served from disk (fast),
-//     then the server update arrives and triggers a second onSnapshot callback,
-//     updating the UI. This is expected behavior and not a bug.
-//   • persistentMultipleTabManager coordinates IndexedDB access between tabs on
-//     the SAME device (only one tab holds the WebSocket; others use broadcast).
-//   • Plain getDocs() (no forced server source) allows cache reads for offline
-//     resilience while still receiving server updates via active listeners.
+// WHY we removed persistentLocalCache:
+//   The persistentMultipleTabManager was causing cross-device sync failures.
+//   It routes secondary tabs through BroadcastChannel instead of opening
+//   their own WebSocket to Firestore. If that broadcast fails or the primary
+//   tab is on a different device, the secondary tab gets stale data.
 //
-// Result: data syncs in real-time across ALL devices and tabs automatically.
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
-    cacheSizeBytes: CACHE_SIZE_UNLIMITED,
-  }),
-});
+// With memory-only cache (default):
+//   • EVERY device and tab gets its own direct WebSocket to Firestore
+//   • onSnapshot() callbacks ALWAYS reflect live server state
+//   • No stale IndexedDB data ever overrides fresh server data
+//   • Data appears on all devices within 1-2 seconds of any write
+//   • Slight tradeoff: first load fetches from network (not disk cache)
+//     but this is exactly what we want for a real-time business app.
+export const db = getFirestore(app);
