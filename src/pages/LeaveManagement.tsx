@@ -12,7 +12,7 @@ import { formatCurrency, formatDate, getCurrentMonth } from "@/lib/utils";
 import * as XLSX from "xlsx";
 
 const leaveSchema = z.object({
-  staffId: z.preprocess((v) => Number(v), z.number().min(1, "Select a staff member")),
+  staffId: z.string().min(1, "Select a staff member"),
   leaveDate: z.string().min(1, "Date required"),
   leaveType: z.enum(["casual", "paid", "unpaid", "sick"]),
   reason: z.string().optional(),
@@ -35,7 +35,7 @@ export function LeaveManagement() {
   const [filterMonth, setFilterMonth] = useState(getCurrentMonth());
   const [filterStaff, setFilterStaff] = useState("all");
   const [modalOpen, setModalOpen] = useState(false);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
@@ -44,37 +44,48 @@ export function LeaveManagement() {
     defaultValues: { leaveType: "casual", approved: true, leaveDate: new Date().toISOString().split("T")[0] },
   });
 
-  useEffect(() => { staffService.getActive().then(setStaffList); }, []);
+  useEffect(() => {
+    let active = true;
+    staffService.getActive().then((data) => {
+      if (active) setStaffList(data);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
-  const loadData = async () => {
+  useEffect(() => {
     setLoading(true);
-    const data = await leaveService.getByMonth(filterMonth);
-    setRecords(data.reverse());
-    setLoading(false);
-  };
+    let active = true;
+    const unsubscribe = leaveService.subscribeByMonth(filterMonth, (data) => {
+      if (active) {
+        setRecords([...data].reverse());
+        setLoading(false);
+      }
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [filterMonth]);
 
-  useEffect(() => { loadData(); }, [filterMonth]);
-
-  const filtered = filterStaff === "all" ? records : records.filter((r) => r.staffId === Number(filterStaff));
+  const filtered = filterStaff === "all" ? records : records.filter((r) => r.staffId === filterStaff);
 
   const onSubmit = async (data: LeaveFormData) => {
     setSaving(true);
     try {
-      const now = new Date().toISOString();
-      await leaveService.add({ ...data, staffId: Number(data.staffId), createdAt: now, updatedAt: now });
+      await leaveService.add({ ...data, staffId: data.staffId });
       toast({ type: "success", title: "Leave Recorded" });
       setModalOpen(false);
       reset();
-      loadData();
     } catch {
       toast({ type: "error", title: "Error recording leave" });
     } finally { setSaving(false); }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     await leaveService.delete(id);
     toast({ type: "success", title: "Leave Deleted" });
-    loadData();
   };
 
   const exportExcel = () => {

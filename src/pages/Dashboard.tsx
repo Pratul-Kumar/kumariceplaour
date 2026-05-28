@@ -11,7 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle, Skeleton, Badge, EmptyState }
 import { expenseService, staffService, salaryService, leaveService } from "@/services";
 import { formatCurrency, formatDate, getCurrentMonth, getLast12Months, formatMonth } from "@/lib/utils";
 import { EXPENSE_CATEGORIES, type Expense } from "@/types";
-import { db } from "@/db";
 
 interface DashboardStats {
   todayExpenses: number;
@@ -37,15 +36,15 @@ function StatCard({ icon: Icon, label, value, sub, color, loading }: {
   if (loading) return <Skeleton className="h-28 rounded-xl" />;
   return (
     <Card className="relative overflow-hidden group hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 hover:-translate-y-0.5">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
-            <p className="text-2xl font-bold text-foreground mt-1">{value}</p>
-            {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+      <CardContent className="p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] sm:text-xs font-medium text-muted-foreground uppercase tracking-wider truncate">{label}</p>
+            <p className="text-lg sm:text-2xl font-bold text-foreground mt-1 truncate">{value}</p>
+            {sub && <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 truncate">{sub}</p>}
           </div>
-          <div className={`p-2.5 rounded-xl ${color}`}>
-            <Icon className="h-5 w-5 text-white" />
+          <div className={`p-2 sm:p-2.5 rounded-xl ${color} shrink-0`}>
+            <Icon className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
           </div>
         </div>
         <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -65,23 +64,61 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
 };
 
 export function Dashboard() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [stats, setStats] = useState<DashboardStats>({
+    todayExpenses: 0,
+    monthExpenses: 0,
+    pendingSalary: 0,
+    staffCount: 0,
+    todayLeaves: 0,
+    recentExpenses: [],
+    categoryTotals: {},
+    monthlyTrend: []
+  });
+  
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function load() {
-      const month = getCurrentMonth();
-      const [todayExpenses, monthExpenses, pendingSalary, staffCount, todayLeaves, recentExpenses, categoryTotals] = await Promise.all([
-        expenseService.getTodayTotal(),
-        expenseService.getMonthTotal(month),
-        salaryService.getPending().then((r) => r.reduce((s, x) => s + x.finalSalary, 0)),
-        staffService.count(),
-        leaveService.getTodayCount(),
-        expenseService.getRecent(8),
-        expenseService.getCategoryTotals(month),
-      ]);
+    const month = getCurrentMonth();
+    const today = new Date().toISOString().split("T")[0];
 
-      // Monthly trend last 6 months
+    // Real-time Subscriptions
+    const unsubExpenses = expenseService.subscribeByMonth(month, (data) => {
+      let todayTotal = 0;
+      let monthTotal = 0;
+      const catTotals: Record<string, number> = {};
+      
+      data.forEach(exp => {
+        monthTotal += exp.amount;
+        if (exp.date === today) todayTotal += exp.amount;
+        catTotals[exp.category] = (catTotals[exp.category] || 0) + exp.amount;
+      });
+
+      setStats(prev => ({
+        ...prev,
+        monthExpenses: monthTotal,
+        todayExpenses: todayTotal,
+        categoryTotals: catTotals,
+        recentExpenses: data.slice(0, 8) // First 8 (since query is ordered by desc)
+      }));
+      setLoading(false); // First render completes when expenses arrive
+    });
+
+    const unsubStaff = staffService.subscribeAll((data) => {
+      setStats(prev => ({ ...prev, staffCount: data.filter(s => s.status === 'active').length }));
+    });
+
+    const unsubSalary = salaryService.subscribePending((data) => {
+      const pendingTotal = data.reduce((sum, r) => sum + r.remainingDue, 0);
+      setStats(prev => ({ ...prev, pendingSalary: pendingTotal }));
+    });
+
+    const unsubLeaves = leaveService.subscribeByMonth(month, (data) => {
+      const todayCount = data.filter(l => l.leaveDate === today).length;
+      setStats(prev => ({ ...prev, todayLeaves: todayCount }));
+    });
+
+    // Background task: Historical trends (doesn't block main render)
+    const fetchTrends = async () => {
       const months = getLast12Months().slice(-6);
       const monthlyTrend = await Promise.all(
         months.map(async (m) => ({
@@ -89,35 +126,38 @@ export function Dashboard() {
           amount: await expenseService.getMonthTotal(m),
         }))
       );
+      setStats(prev => ({ ...prev, monthlyTrend }));
+    };
+    fetchTrends();
 
-      setStats({ todayExpenses, monthExpenses, pendingSalary, staffCount, todayLeaves, recentExpenses, categoryTotals, monthlyTrend });
-      setLoading(false);
-    }
-    load();
+    return () => {
+      unsubExpenses();
+      unsubStaff();
+      unsubSalary();
+      unsubLeaves();
+    };
   }, []);
 
-  const pieData = stats
-    ? Object.entries(stats.categoryTotals).map(([cat, amt]) => {
-        const info = EXPENSE_CATEGORIES.find((c) => c.value === cat);
-        return { name: info?.label || cat, value: amt, color: info?.color || "#64748b" };
-      })
-    : [];
+  const pieData = Object.entries(stats.categoryTotals).map(([cat, amt]) => {
+    const info = EXPENSE_CATEGORIES.find((c) => c.value === cat);
+    return { name: info?.label || cat, value: amt, color: info?.color || "#64748b" };
+  });
 
   return (
     <div className="space-y-6 pb-20 lg:pb-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Good {getGreeting()} 👋</h1>
+        <h1 className="text-2xl font-bold text-foreground">Welcome Back 👋</h1>
         <p className="text-muted-foreground text-sm mt-1">Here's your Kumar Ice Parlour business overview.</p>
       </div>
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <StatCard icon={TrendingDown} label="Today's Spend" value={formatCurrency(stats?.todayExpenses || 0)} sub="Today" color="bg-red-500" loading={loading} />
-        <StatCard icon={Receipt} label="This Month" value={formatCurrency(stats?.monthExpenses || 0)} sub={formatMonth(getCurrentMonth())} color="bg-violet-500" loading={loading} />
-        <StatCard icon={IndianRupee} label="Salary Due" value={formatCurrency(stats?.pendingSalary || 0)} sub="Unpaid" color="bg-amber-500" loading={loading} />
-        <StatCard icon={Users} label="Staff" value={String(stats?.staffCount || 0)} sub="Total active" color="bg-emerald-500" loading={loading} />
-        <StatCard icon={CalendarOff} label="On Leave" value={String(stats?.todayLeaves || 0)} sub="Today" color="bg-pink-500" loading={loading} />
+        <StatCard icon={TrendingDown} label="Today's Spend" value={formatCurrency(stats.todayExpenses)} sub="Today" color="bg-red-500" loading={loading} />
+        <StatCard icon={Receipt} label="This Month" value={formatCurrency(stats.monthExpenses)} sub={formatMonth(getCurrentMonth())} color="bg-violet-500" loading={loading} />
+        <StatCard icon={IndianRupee} label="Salary Due" value={formatCurrency(stats.pendingSalary)} sub="Unpaid" color="bg-amber-500" loading={loading} />
+        <StatCard icon={Users} label="Staff" value={String(stats.staffCount)} sub="Total active" color="bg-emerald-500" loading={loading} />
+        <StatCard icon={CalendarOff} label="On Leave" value={String(stats.todayLeaves)} sub="Today" color="bg-pink-500" loading={loading} />
         <StatCard icon={Zap} label="Alerts" value="3" sub="Need attention" color="bg-orange-500" loading={loading} />
       </div>
 
@@ -136,7 +176,7 @@ export function Dashboard() {
               <Skeleton className="h-48 w-full" />
             ) : (
               <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={stats?.monthlyTrend}>
+                <AreaChart data={stats.monthlyTrend}>
                   <defs>
                     <linearGradient id="colorAmt" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
@@ -146,36 +186,35 @@ export function Dashboard() {
                   <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Area type="monotone" dataKey="amount" stroke="#6366f1" strokeWidth={2} fill="url(#colorAmt)" />
+                  <Area type="monotone" dataKey="amount" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorAmt)" />
                 </AreaChart>
               </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
 
-        {/* Category Pie */}
+        {/* Expenses by Category */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2">
-              <Receipt className="h-4 w-4 text-primary" />
-              By Category
+              <PieChart className="h-4 w-4 text-primary" />
+              Category Breakdown
             </CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
               <Skeleton className="h-48 w-full" />
             ) : pieData.length === 0 ? (
-              <EmptyState icon="📊" title="No data" description="Add expenses to see chart" />
+              <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">No expenses this month</div>
             ) : (
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={3} dataKey="value">
-                    {pieData.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
+                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(v) => [formatCurrency(Number(v)), 'Amount']} />
-                  <Legend iconSize={8} iconType="circle" formatter={(v) => <span style={{ fontSize: 11, color: "#94a3b8" }}>{v}</span>} />
+                  <Tooltip content={<CustomTooltip />} />
                 </PieChart>
               </ResponsiveContainer>
             )}
@@ -183,70 +222,79 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Recent Transactions */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+      {/* Recent Activity Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Recent Expenses */}
+        <Card>
+          <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Clock className="h-4 w-4 text-primary" />
-              Recent Transactions
+              Recent Expenses
             </CardTitle>
-            <Badge variant="secondary">{stats?.recentExpenses.length || 0} records</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-4 space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
-            </div>
-          ) : (stats?.recentExpenses.length || 0) === 0 ? (
-            <EmptyState icon="💸" title="No expenses yet" description="Start adding your business expenses" />
-          ) : (
-            <div className="divide-y divide-border">
-              {stats?.recentExpenses.map((exp) => {
-                const cat = EXPENSE_CATEGORIES.find((c) => c.value === exp.category);
-                return (
-                  <div key={exp.id} className="flex items-center gap-3 px-6 py-3 hover:bg-muted/30 transition-colors">
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ backgroundColor: `${cat?.color}20` }}>
-                      {cat?.icon}
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+              </div>
+            ) : stats.recentExpenses.length === 0 ? (
+              <EmptyState icon="💸" title="No recent expenses" description="You haven't recorded any expenses yet." />
+            ) : (
+              <div className="space-y-3">
+                {stats.recentExpenses.map((exp) => {
+                  const cat = EXPENSE_CATEGORIES.find((c) => c.value === exp.category) || EXPENSE_CATEGORIES[0];
+                  return (
+                    <div key={exp.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors border border-transparent hover:border-border">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ backgroundColor: `${cat.color}20` }}>
+                        {cat.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate">{exp.title}</p>
+                        <p className="text-xs text-muted-foreground">{cat.label} · {formatDate(exp.date)}</p>
+                      </div>
+                      <p className="text-sm font-bold text-red-400 shrink-0">
+                        -{formatCurrency(exp.amount)}
+                      </p>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{exp.title}</p>
-                      <p className="text-xs text-muted-foreground">{cat?.label} • {formatDate(exp.date)}</p>
-                    </div>
-                    <p className="text-sm font-semibold text-red-400 shrink-0">- {formatCurrency(exp.amount)}</p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-      {/* Quick Alerts */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
-          <AlertCircle className="h-5 w-5 text-amber-400 shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-amber-400">Salary Due</p>
-            <p className="text-xs text-muted-foreground">Process salary for current month</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
-          <Users className="h-5 w-5 text-blue-400 shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-blue-400">Staff on Leave Today</p>
-            <p className="text-xs text-muted-foreground">{stats?.todayLeaves || 0} staff members absent</p>
-          </div>
-        </div>
+        {/* Quick Actions & Alerts */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-primary" />
+              Alerts & Quick Actions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {stats.pendingSalary > 0 && (
+                <div className="flex items-center justify-between p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                  <div className="flex items-center gap-2">
+                    <IndianRupee className="h-4 w-4" />
+                    <p className="text-sm font-medium">Pending salaries to clear</p>
+                  </div>
+                  <Badge variant="warning" className="bg-amber-500">{formatCurrency(stats.pendingSalary)}</Badge>
+                </div>
+              )}
+              {stats.todayLeaves > 0 && (
+                <div className="flex items-center justify-between p-3 rounded-lg border border-pink-500/30 bg-pink-500/10 text-pink-700 dark:text-pink-400">
+                  <div className="flex items-center gap-2">
+                    <CalendarOff className="h-4 w-4" />
+                    <p className="text-sm font-medium">Staff on leave today</p>
+                  </div>
+                  <Badge className="bg-pink-500 hover:bg-pink-600">{stats.todayLeaves} Staff</Badge>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
-}
-
-function getGreeting() {
-  const h = new Date().getHours();
-  if (h < 12) return "Morning";
-  if (h < 17) return "Afternoon";
-  return "Evening";
 }

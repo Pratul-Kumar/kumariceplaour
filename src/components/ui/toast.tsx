@@ -44,7 +44,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
 function ToastItem({ toast: t, onDismiss }: { toast: Toast; onDismiss: (id: string) => void }) {
   const [visible, setVisible] = useState(false);
-  useEffect(() => { setTimeout(() => setVisible(true), 10); }, []);
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), 10);
+    return () => clearTimeout(timer);
+  }, []);
 
   const icons = { success: CheckCircle, error: AlertCircle, info: Info, warning: AlertTriangle };
   const Icon = icons[t.type];

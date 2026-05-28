@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { Settings as SettingsIcon, Moon, Sun, Download, Upload, Trash2, RefreshCw, CheckCircle } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, Input, Button, Switch, Badge } from "@/components/ui";
+import { Card, CardContent, CardHeader, CardTitle, Input, Button, Badge, Switch } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { settingsService } from "@/services";
-import { db, seedDemoData } from "@/db";
 import { useTheme } from "@/hooks/useTheme";
 
 export function Settings() {
@@ -34,72 +33,19 @@ export function Settings() {
   };
 
   const handleExportBackup = async () => {
-    const backup = {
-      exportedAt: new Date().toISOString(),
-      version: 1,
-      data: {
-        staff: await db.staff.toArray(),
-        expenses: await db.expenses.toArray(),
-        salaryRecords: await db.salaryRecords.toArray(),
-        leaveRecords: await db.leaveRecords.toArray(),
-        temporaryStaff: await db.temporaryStaff.toArray(),
-        settings: await db.settings.toArray(),
-      },
-    };
-    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `kumar-ice-parlour-backup-${new Date().toISOString().split("T")[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast({ type: "success", title: "Backup Downloaded", description: "All data exported as JSON." });
+    toast({ type: "info", title: "Cloud Sync Enabled", description: "Your data is automatically synced to Firebase." });
   };
 
   const handleImportBackup = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json";
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const backup = JSON.parse(text);
-        if (!backup.data) throw new Error("Invalid backup file");
-        await db.staff.clear();
-        await db.expenses.clear();
-        await db.salaryRecords.clear();
-        await db.leaveRecords.clear();
-        await db.temporaryStaff.clear();
-        await db.settings.clear();
-        if (backup.data.staff?.length) await db.staff.bulkAdd(backup.data.staff);
-        if (backup.data.expenses?.length) await db.expenses.bulkAdd(backup.data.expenses);
-        if (backup.data.salaryRecords?.length) await db.salaryRecords.bulkAdd(backup.data.salaryRecords);
-        if (backup.data.leaveRecords?.length) await db.leaveRecords.bulkAdd(backup.data.leaveRecords);
-        if (backup.data.temporaryStaff?.length) await db.temporaryStaff.bulkAdd(backup.data.temporaryStaff);
-        if (backup.data.settings?.length) await db.settings.bulkAdd(backup.data.settings);
-        toast({ type: "success", title: "Backup Restored", description: "All data imported successfully." });
-      } catch {
-        toast({ type: "error", title: "Import Failed", description: "Invalid backup file." });
-      }
-    };
-    input.click();
+    toast({ type: "info", title: "Cloud Sync Enabled", description: "Your data is automatically synced to Firebase." });
   };
 
   const handleClearData = async () => {
-    await db.staff.clear();
-    await db.expenses.clear();
-    await db.salaryRecords.clear();
-    await db.leaveRecords.clear();
-    await db.temporaryStaff.clear();
-    toast({ type: "success", title: "Data Cleared", description: "All records deleted." });
+    toast({ type: "error", title: "Not Allowed", description: "Data clearing is disabled in cloud mode." });
   };
 
   const handleReseed = async () => {
-    await handleClearData();
-    await seedDemoData();
-    toast({ type: "success", title: "Demo Data Loaded", description: "Sample data has been added." });
+    toast({ type: "error", title: "Not Allowed", description: "Demo data generation is disabled in cloud mode." });
   };
 
   return (

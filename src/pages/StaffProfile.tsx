@@ -18,7 +18,7 @@ export function StaffProfile() {
 
   useEffect(() => {
     if (!id) return;
-    const staffId = Number(id);
+    const staffId = id;
     Promise.all([
       staffService.getById(staffId),
       salaryService.getByStaff(staffId),
@@ -117,16 +117,15 @@ export function StaffProfile() {
                 {salaryHistory.map((s) => (
                   <div key={s.id} className="flex items-center justify-between px-5 py-4">
                     <div>
-                      <p className="text-sm font-medium text-foreground">{formatMonth(s.month)}</p>
+                      <p className="text-sm font-medium text-foreground">{formatMonth(`${s.year}-${s.month.toString().padStart(2, '0')}`)}</p>
                       <p className="text-xs text-muted-foreground">
-                        Present: {s.presentDays}d · Absent: {s.absentDays}d
-                        {s.leaveDeductionAmount > 0 && ` · Deducted: ${formatCurrency(s.leaveDeductionAmount)}`}
+                        {s.leaveDeduction > 0 && `Deducted: ${formatCurrency(s.leaveDeduction)}`}
                         {s.bonus > 0 && ` · Bonus: ${formatCurrency(s.bonus)}`}
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold text-foreground">{formatCurrency(s.finalSalary)}</p>
-                      <Badge variant={s.paid ? "success" : "warning"}>{s.paid ? "Paid" : "Pending"}</Badge>
+                      <Badge variant={s.status === "paid" ? "success" : s.status === "partial" ? "warning" : "destructive"}>{s.status}</Badge>
                     </div>
                   </div>
                 ))}

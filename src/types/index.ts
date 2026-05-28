@@ -6,7 +6,7 @@ export type StaffRole = "manager" | "cashier" | "worker" | "delivery" | "securit
 export type StaffStatus = "active" | "inactive";
 
 export interface Staff {
-  id?: number;
+  id?: string;
   name: string;
   role: StaffRole;
   phone: string;
@@ -29,8 +29,8 @@ export interface Staff {
 export type AttendanceStatus = "present" | "absent" | "half_day" | "leave";
 
 export interface Attendance {
-  id?: number;
-  staffId: number;
+  id?: string;
+  staffId: string;
   date: string; // ISO YYYY-MM-DD
   status: AttendanceStatus;
   overtimeHours: number;
@@ -47,42 +47,48 @@ export type ExpenseCategory =
   | "internet" | "transport" | "maintenance" | "extra_expense" | "miscellaneous";
 
 export interface Expense {
-  id?: number;
+  id?: string;
   title: string;
   amount: number;
   category: ExpenseCategory;
   date: string;
   note?: string;
-  staffId?: number;
+  staffId?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 // ============================================================
-// SALARY RECORD
+// SALARY RECORD & PAYMENTS
 // ============================================================
 export interface SalaryRecord {
-  id?: number;
-  staffId: number;
-  month: string; // YYYY-MM
-  salaryType: SalaryType;
-  baseSalary: number;       // monthlySalary or dailyWage
-  workingDays: number;      // calendar working days
-  presentDays: number;      // days present (incl half-day as 0.5)
-  absentDays: number;
-  leaveDays: number;
-  deductedLeaves: number;   // leaves beyond allowance
-  leaveDeductionAmount: number;
+  id?: string;
+  staffId: string;
+  month: number;
+  year: number;
+  baseSalary: number;
   bonus: number;
-  overtimeAmount: number;
-  advance: number;
+  overtime: number;
+  leaveDeduction: number;
   extraDeduction: number;
+  advance: number;
+  previousDue: number;
   finalSalary: number;
-  paid: boolean;
-  paidDate?: string;
+  totalPaid: number;
+  remainingDue: number;
+  status: "pending" | "partial" | "paid";
   note?: string;
   createdAt: string;
-  updatedAt: string;
+}
+
+export interface SalaryPayment {
+  id?: string;
+  salaryRecordId: string;
+  staffId: string;
+  amountPaid: number;
+  paymentDate: string;
+  paymentMethod: "cash" | "upi" | "bank" | "other";
+  note?: string;
 }
 
 // ============================================================
@@ -91,8 +97,8 @@ export interface SalaryRecord {
 export type LeaveType = "casual" | "paid" | "unpaid" | "sick";
 
 export interface LeaveRecord {
-  id?: number;
-  staffId: number;
+  id?: string;
+  staffId: string;
   leaveDate: string;
   leaveType: LeaveType;
   reason?: string;
@@ -105,7 +111,7 @@ export interface LeaveRecord {
 // TEMPORARY WORKER
 // ============================================================
 export interface TemporaryStaff {
-  id?: number;
+  id?: string;
   workerName: string;
   workType: string;
   amount: number;
@@ -119,7 +125,7 @@ export interface TemporaryStaff {
 // SETTINGS
 // ============================================================
 export interface AppSettings {
-  id?: number;
+  id?: string;
   key: string;
   value: string;
 }

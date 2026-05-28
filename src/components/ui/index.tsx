@@ -20,10 +20,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       link: "text-primary underline-offset-4 hover:underline",
     };
     const sizeClasses = {
-      default: "h-10 px-4 py-2 text-sm",
-      sm: "h-8 rounded-md px-3 text-xs",
-      lg: "h-11 rounded-md px-8 text-base",
-      icon: "h-10 w-10",
+      default: "h-11 px-4 py-2 text-sm",
+      sm: "h-9 rounded-md px-3 text-xs",
+      lg: "h-12 rounded-md px-8 text-base",
+      icon: "h-11 w-11",
     };
     return (
       <button
@@ -50,7 +50,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className
   <input
     ref={ref}
     className={cn(
-      "flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200",
+      "flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200",
       className
     )}
     {...props}

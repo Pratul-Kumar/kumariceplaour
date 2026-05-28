@@ -1,22 +1,39 @@
 import { useEffect, useState } from "react";
-import { settingsService } from "@/services";
+
+type Theme = "light" | "dark";
+
+let currentTheme: Theme = (localStorage.getItem("theme") as Theme) || "dark";
+const listeners = new Set<(theme: Theme) => void>();
+
+const updateTheme = (next: Theme) => {
+  currentTheme = next;
+  if (typeof window !== "undefined") {
+    document.documentElement.classList.toggle("dark", next === "dark");
+  }
+  localStorage.setItem("theme", next);
+  listeners.forEach(fn => fn(next));
+};
+
+// Initialize class on load synchronously
+if (typeof window !== "undefined") {
+  document.documentElement.classList.toggle("dark", currentTheme === "dark");
+}
 
 export function useTheme() {
-  const [theme, setTheme] = useState<"light" | "dark">("dark");
+  const [theme, setTheme] = useState<Theme>(currentTheme);
 
   useEffect(() => {
-    settingsService.get("theme").then((s) => {
-      const saved = (s?.value as "light" | "dark") || "dark";
-      setTheme(saved);
-      document.documentElement.classList.toggle("dark", saved === "dark");
-    });
+    setTheme(currentTheme);
+    const handler = (nextTheme: Theme) => setTheme(nextTheme);
+    listeners.add(handler);
+    return () => {
+      listeners.delete(handler);
+    };
   }, []);
 
-  const toggleTheme = async () => {
+  const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    document.documentElement.classList.toggle("dark", next === "dark");
-    await settingsService.set("theme", next);
+    updateTheme(next);
   };
 
   return { theme, toggleTheme };

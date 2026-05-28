@@ -21,7 +21,7 @@ const expenseSchema = z.object({
   category: z.enum(["item_expense","salary","bonus","electricity","rent","internet","transport","maintenance","extra_expense","miscellaneous"] as const),
   date: z.string().min(1, "Date required"),
   note: z.string().optional(),
-  staffId: z.preprocess((v) => (v ? Number(v) : undefined), z.number().optional()),
+  staffId: z.string().optional(),
 });
 
 type ExpenseFormData = z.infer<typeof expenseSchema>;
@@ -45,7 +45,7 @@ export function ExpenseManagement() {
   const [filterMonth, setFilterMonth] = useState(getCurrentMonth());
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<Expense | null>(null);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [categoryTotals, setCategoryTotals] = useState<Record<string, number>>({});
   const { toast } = useToast();
@@ -55,20 +55,33 @@ export function ExpenseManagement() {
     defaultValues: { date: new Date().toISOString().split("T")[0], category: "item_expense" },
   });
 
-  const loadData = async () => {
+  useEffect(() => {
     setLoading(true);
-    const [all, staffList, totals] = await Promise.all([
-      expenseService.getByMonth(filterMonth),
-      staffService.getAll(),
-      expenseService.getCategoryTotals(filterMonth),
-    ]);
-    setExpenses(all.reverse());
-    setStaff(staffList);
-    setCategoryTotals(totals);
-    setLoading(false);
-  };
+    let unsubExpenses: () => void;
+    let unsubStaff: () => void;
 
-  useEffect(() => { loadData(); }, [filterMonth]);
+    const setup = async () => {
+      // We can compute category totals on the fly from the expenses array
+      unsubStaff = staffService.subscribeAll((data) => setStaff(data));
+      unsubExpenses = expenseService.subscribeByMonth(filterMonth, (data) => {
+        setExpenses(data);
+        
+        // Compute category totals
+        const totals: Record<string, number> = {};
+        data.forEach(e => {
+          totals[e.category] = (totals[e.category] || 0) + e.amount;
+        });
+        setCategoryTotals(totals);
+        setLoading(false);
+      });
+    };
+    
+    setup();
+    return () => {
+      if (unsubExpenses) unsubExpenses();
+      if (unsubStaff) unsubStaff();
+    };
+  }, [filterMonth]);
 
   const filtered = expenses.filter((e) => {
     const matchSearch = e.title.toLowerCase().includes(search.toLowerCase());
@@ -98,11 +111,10 @@ export function ExpenseManagement() {
         await expenseService.update(editItem.id, data);
         toast({ type: "success", title: "Expense Updated" });
       } else {
-        await expenseService.add({ ...data, createdAt: now, updatedAt: now });
+        await expenseService.add({ ...data, staffId: data.staffId || undefined, date: data.date });
         toast({ type: "success", title: "Expense Added", description: `${formatCurrency(data.amount)} recorded.` });
       }
       setModalOpen(false);
-      loadData();
     } catch {
       toast({ type: "error", title: "Error saving expense" });
     } finally {
@@ -110,10 +122,9 @@ export function ExpenseManagement() {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     await expenseService.delete(id);
     toast({ type: "success", title: "Expense Deleted" });
-    loadData();
   };
 
   const exportToExcel = () => {
@@ -272,6 +283,13 @@ export function ExpenseManagement() {
             {errors.title && <p className="text-xs text-red-400 mt-1">{errors.title.message}</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="text-sm font-medium text-foreground block mb-1.5">Staff Relation (Optional)</label>
+              <select {...register("staffId")} className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="">None</option>
+                {staff.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
+              </select>
+            </div>
             <div>
               <label className="text-sm font-medium text-foreground block mb-1.5">Amount *</label>
               <Input {...register("amount")} placeholder="0" type="number" min={0} />
@@ -288,17 +306,10 @@ export function ExpenseManagement() {
             <Select options={EXPENSE_CATEGORIES.map((c) => ({ value: c.value, label: `${c.icon} ${c.label}` }))} {...register("category")} />
           </div>
           <div>
-            <label className="text-sm font-medium text-foreground block mb-1.5">Related Staff (optional)</label>
-            <Select
-              options={staff.map((s) => ({ value: String(s.id), label: s.name }))}
-              placeholder="None"
-              {...register("staffId", { setValueAs: (v) => (v ? Number(v) : undefined) })}
-            />
-          </div>
-          <div>
             <label className="text-sm font-medium text-foreground block mb-1.5">Note</label>
             <Input {...register("note")} placeholder="Optional note..." />
           </div>
+
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button type="submit" className="flex-1" disabled={saving}>

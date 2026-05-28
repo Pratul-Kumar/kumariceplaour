@@ -2,17 +2,18 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Edit2, Trash2, Download, CheckCircle, XCircle, Calculator } from "lucide-react";
-import { Button, Input, Card, CardContent, CardHeader, CardTitle, Badge, EmptyState, Spinner, Skeleton } from "@/components/ui";
+import { Plus, Trash2, CheckCircle, Calculator, FileText, Download, HandCoins } from "lucide-react";
+import { Button, Input, Card, CardContent, Badge, EmptyState, Spinner, Skeleton, Select } from "@/components/ui";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { staffService, salaryService, attendanceService } from "@/services";
-import { type Staff, type SalaryRecord, calculateSalary } from "@/types";
-import { formatCurrency, formatMonth, getCurrentMonth } from "@/lib/utils";
-import * as XLSX from "xlsx";
+import { type Staff, type SalaryRecord, type SalaryPayment, calculateSalary } from "@/types";
+import { formatCurrency, formatMonth, getCurrentMonth, formatDate } from "@/lib/utils";
+import { generateSalarySlip } from "@/services/pdf/generateSalarySlip";
+import { generatePaymentReceipt } from "@/services/pdf/generatePaymentReceipt";
 
 const salarySchema = z.object({
-  staffId: z.preprocess((v) => Number(v), z.number().min(1, "Select a staff member")),
+  staffId: z.string().min(1, "Select a staff member"),
   month: z.string().min(1, "Month required"),
   bonus: z.preprocess((v) => Number(v) || 0, z.number().min(0)).default(0),
   advance: z.preprocess((v) => Number(v) || 0, z.number().min(0)).default(0),
@@ -22,48 +23,91 @@ const salarySchema = z.object({
 
 type SalaryFormData = z.infer<typeof salarySchema>;
 
+const paymentSchema = z.object({
+  amountPaid: z.preprocess((v) => Number(v) || 0, z.number().min(1, "Enter valid amount")),
+  paymentMethod: z.enum(["cash", "upi", "bank", "other"]),
+  paymentDate: z.string().min(1, "Date is required"),
+  note: z.string().optional(),
+});
+type PaymentFormData = z.infer<typeof paymentSchema>;
+
 export function SalaryManagement() {
   const [records, setRecords] = useState<SalaryRecord[]>([]);
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterMonth, setFilterMonth] = useState(getCurrentMonth());
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editItem, setEditItem] = useState<SalaryRecord | null>(null);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  
+  // Modals
+  const [generateModalOpen, setGenerateModalOpen] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<SalaryRecord | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  
   const [saving, setSaving] = useState(false);
   const [previewCalc, setPreviewCalc] = useState<ReturnType<typeof calculateSalary> | null>(null);
+  const [paymentsMap, setPaymentsMap] = useState<Record<string, SalaryPayment[]>>({});
   const { toast } = useToast();
 
-  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<SalaryFormData>({
+  const { register: regGen, handleSubmit: handleGenSubmit, reset: resetGen, watch: watchGen, formState: { errors: errGen } } = useForm<SalaryFormData>({
     resolver: zodResolver(salarySchema),
     defaultValues: { month: getCurrentMonth(), bonus: 0, advance: 0, extraDeduction: 0 },
   });
 
-  const watchedStaffId = watch("staffId");
-  const watchedMonth = watch("month");
-  const watchedBonus = watch("bonus");
-  const watchedAdvance = watch("advance");
-  const watchedExtra = watch("extraDeduction");
+  const { register: regPay, handleSubmit: handlePaySubmit, reset: resetPay, formState: { errors: errPay } } = useForm<PaymentFormData>({
+    resolver: zodResolver(paymentSchema),
+    defaultValues: { paymentMethod: "cash", paymentDate: new Date().toISOString().split('T')[0] },
+  });
+
+  const watchedStaffId = watchGen("staffId");
+  const watchedMonth = watchGen("month");
+  const watchedBonus = watchGen("bonus");
+  const watchedAdvance = watchGen("advance");
+  const watchedExtra = watchGen("extraDeduction");
 
   useEffect(() => {
-    staffService.getActive().then(setStaffList);
-  }, []);
-
-  const loadData = async () => {
     setLoading(true);
-    const data = await salaryService.getByMonth(filterMonth);
-    setRecords(data);
-    setLoading(false);
-  };
+    let active = true;
 
-  useEffect(() => { loadData(); }, [filterMonth]);
+    const unsubStaff = staffService.subscribeAll((data) => {
+      if (active) setStaffList(data);
+    });
+    
+    const [yearStr, monthStr] = filterMonth.split("-");
+    const unsubRecords = salaryService.subscribeByMonth(Number(monthStr), Number(yearStr), async (data) => {
+      if (!active) return;
+      setRecords(data);
+      
+      const pm: Record<string, SalaryPayment[]> = {};
+      try {
+        await Promise.all(
+          data.map(async (r) => {
+            const payments = await salaryService.getPaymentsForRecord(r.id!);
+            pm[r.id!] = payments;
+          })
+        );
+      } catch (err) {
+        console.error("Failed to load salary payments", err);
+      }
+
+      if (active) {
+        setPaymentsMap(pm);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      active = false;
+      unsubStaff();
+      unsubRecords();
+    };
+  }, [filterMonth]);
 
   // Live salary preview
   useEffect(() => {
     if (!watchedStaffId || !watchedMonth) return;
-    const staff = staffList.find((s) => s.id === Number(watchedStaffId));
+    const staff = staffList.find((s) => s.id === watchedStaffId);
     if (!staff) return;
-    attendanceService.getByStaffAndMonth(Number(watchedStaffId), watchedMonth).then((attRecords) => {
+    attendanceService.getByStaffAndMonth(watchedStaffId, watchedMonth).then((attRecords) => {
       const daysInMonth = new Date(parseInt(watchedMonth.slice(0, 4)), parseInt(watchedMonth.slice(5, 7)), 0).getDate();
       const result = calculateSalary({
         staff, attendanceRecords: attRecords,
@@ -76,94 +120,130 @@ export function SalaryManagement() {
     });
   }, [watchedStaffId, watchedMonth, watchedBonus, watchedAdvance, watchedExtra, staffList]);
 
-  const openAdd = () => {
-    setEditItem(null);
+  const openGenerate = () => {
     setPreviewCalc(null);
-    reset({ month: filterMonth, bonus: 0, advance: 0, extraDeduction: 0 });
-    setModalOpen(true);
+    resetGen({ month: filterMonth, bonus: 0, advance: 0, extraDeduction: 0 });
+    setGenerateModalOpen(true);
   };
 
-  const onSubmit = async (data: SalaryFormData) => {
+  const openPayment = (record: SalaryRecord) => {
+    setSelectedRecord(record);
+    resetPay({ paymentMethod: "cash", paymentDate: new Date().toISOString().split('T')[0], amountPaid: record.remainingDue });
+    setPaymentModalOpen(true);
+  };
+
+  const onGenerate = async (data: SalaryFormData) => {
     setSaving(true);
     try {
-      const now = new Date().toISOString();
-      const staff = staffList.find((s) => s.id === Number(data.staffId));
+      const staff = staffList.find((s) => s.id === data.staffId);
       if (!staff) throw new Error("Staff not found");
-      const daysInMonth = new Date(parseInt(data.month.slice(0, 4)), parseInt(data.month.slice(5, 7)), 0).getDate();
-      const attRecords = await attendanceService.getByStaffAndMonth(Number(data.staffId), data.month);
+      const [yearStr, monthStr] = data.month.split("-");
+      const daysInMonth = new Date(parseInt(yearStr), parseInt(monthStr), 0).getDate();
+      
+      const attRecords = await attendanceService.getByStaffAndMonth(data.staffId, data.month);
       const calc = calculateSalary({ staff, attendanceRecords: attRecords, workingDaysInMonth: daysInMonth, bonus: data.bonus, advance: data.advance, extraDeduction: data.extraDeduction });
 
-      const record: Omit<SalaryRecord, "id"> = {
-        staffId: Number(data.staffId), month: data.month, salaryType: staff.salaryType,
-        baseSalary: staff.salaryType === "monthly" ? staff.monthlySalary : staff.dailyWage,
-        workingDays: daysInMonth, presentDays: calc.presentDays, absentDays: calc.absentDays,
-        leaveDays: calc.leaveDays, deductedLeaves: calc.deductedLeaves,
-        leaveDeductionAmount: calc.leaveDeductionAmount, bonus: data.bonus,
-        overtimeAmount: calc.overtimeAmount, advance: data.advance,
-        extraDeduction: data.extraDeduction, finalSalary: calc.finalSalary,
-        paid: false, note: data.note, createdAt: now, updatedAt: now,
-      };
+      // Determine previous due from earlier records
+      const allPastRecords = await salaryService.getByStaff(staff.id!);
+      const previousDue = allPastRecords.length > 0 ? allPastRecords[0].remainingDue : 0;
 
-      if (editItem?.id) {
-        await salaryService.update(editItem.id, record);
-        toast({ type: "success", title: "Salary Record Updated" });
-      } else {
-        await salaryService.add(record);
-        toast({ type: "success", title: "Salary Generated", description: `${formatCurrency(calc.finalSalary)} for ${staff.name}` });
-      }
-      setModalOpen(false);
-      loadData();
-    } catch (e: unknown) {
-      toast({ type: "error", title: "Error", description: (e as Error).message });
+      const record: Omit<SalaryRecord, "id" | "createdAt" | "updatedAt"> = {
+        staffId: data.staffId, 
+        month: Number(monthStr), 
+        year: Number(yearStr),
+        baseSalary: staff.salaryType === "monthly" ? staff.monthlySalary : staff.dailyWage,
+        bonus: data.bonus,
+        advance: data.advance,
+        leaveDeduction: calc.leaveDeductionAmount,
+        extraDeduction: data.extraDeduction, 
+        overtime: calc.overtimeAmount,
+        finalSalary: calc.finalSalary,
+        previousDue: previousDue,
+        totalPaid: 0,
+        remainingDue: calc.finalSalary + previousDue,
+        status: "pending",
+        note: data.note,
+      } as any; // Temporary fix for 'note' missing if it's missing in type
+
+      await salaryService.addRecord(record);
+      toast({ type: "success", title: "Salary Generated", description: `${formatCurrency(calc.finalSalary)} for ${staff.name}` });
+      setGenerateModalOpen(false);
+    } catch (e: any) {
+      toast({ type: "error", title: "Error", description: e.message });
     } finally { setSaving(false); }
   };
 
-  const handleMarkPaid = async (id: number) => {
-    await salaryService.markPaid(id);
-    toast({ type: "success", title: "Marked as Paid" });
-    loadData();
+  const onPayment = async (data: PaymentFormData) => {
+    if (!selectedRecord) return;
+    setSaving(true);
+    try {
+      if (data.amountPaid > selectedRecord.remainingDue) {
+        throw new Error(`Amount cannot exceed remaining due (${formatCurrency(selectedRecord.remainingDue)})`);
+      }
+      
+      const newTotalPaid = selectedRecord.totalPaid + data.amountPaid;
+      const newRemainingDue = selectedRecord.remainingDue - data.amountPaid;
+      const newStatus = newRemainingDue <= 0 ? "paid" : "partial";
+
+      await salaryService.addPayment({
+        salaryRecordId: selectedRecord.id!,
+        staffId: selectedRecord.staffId,
+        amountPaid: data.amountPaid,
+        paymentDate: data.paymentDate,
+        paymentMethod: data.paymentMethod,
+        note: data.note
+      });
+
+      await salaryService.updateRecord(selectedRecord.id!, {
+        totalPaid: newTotalPaid,
+        remainingDue: newRemainingDue,
+        status: newStatus
+      });
+
+      toast({ type: "success", title: "Payment Recorded", description: formatCurrency(data.amountPaid) });
+      setPaymentModalOpen(false);
+    } catch (e: any) {
+      toast({ type: "error", title: "Error", description: e.message });
+    } finally { setSaving(false); }
   };
 
-  const exportExcel = () => {
-    const data = records.map((r) => {
-      const s = staffList.find((st) => st.id === r.staffId);
-      return {
-        "Staff": s?.name || r.staffId,
-        "Month": formatMonth(r.month),
-        "Type": r.salaryType,
-        "Base": r.baseSalary,
-        "Present": r.presentDays,
-        "Absent": r.absentDays,
-        "Leave Deduction": r.leaveDeductionAmount,
-        "Bonus": r.bonus,
-        "Advance": r.advance,
-        "Final Salary": r.finalSalary,
-        "Status": r.paid ? "Paid" : "Pending",
-        "Paid Date": r.paidDate || "",
-      };
+  const downloadSlip = async (record: SalaryRecord) => {
+    const staff = staffList.find(s => s.id === record.staffId);
+    if (!staff) return;
+    const payments = await salaryService.getPaymentsForRecord(record.id!);
+    const monthStr = `${record.year}-${record.month.toString().padStart(2, '0')}`;
+    const attRecords = await attendanceService.getByStaffAndMonth(staff.id!, monthStr);
+    
+    let w = 0, p = 0, a = 0, l = 0, h = 0;
+    w = new Date(record.year, record.month, 0).getDate();
+    attRecords.forEach(att => {
+      if (att.status === 'present') p++;
+      else if (att.status === 'absent') a++;
+      else if (att.status === 'leave') l++;
+      else if (att.status === 'half_day') h++;
     });
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Salary");
-    XLSX.writeFile(wb, `salary-${filterMonth}.xlsx`);
-    toast({ type: "success", title: "Exported to Excel" });
+
+    generateSalarySlip(staff, record, payments, { workingDays: w, presentDays: p, absentDays: a, leaveDays: l, halfDays: h });
   };
 
-  const totalPaid = records.filter((r) => r.paid).reduce((s, r) => s + r.finalSalary, 0);
-  const totalPending = records.filter((r) => !r.paid).reduce((s, r) => s + r.finalSalary, 0);
+  const downloadReceipt = async (record: SalaryRecord, payment: SalaryPayment) => {
+    const staff = staffList.find(s => s.id === record.staffId);
+    if (!staff) return;
+    generatePaymentReceipt(staff, record, payment);
+  };
+
+  const totalPaid = records.reduce((s, r) => s + r.totalPaid, 0);
+  const totalDue = records.reduce((s, r) => s + r.remainingDue, 0);
 
   return (
     <div className="space-y-5 pb-20 lg:pb-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Salary</h1>
+          <h1 className="text-xl font-bold text-foreground">Salary Ledger</h1>
           <p className="text-sm text-muted-foreground">{records.length} records for {formatMonth(filterMonth)}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={exportExcel} className="gap-2 hidden sm:flex">
-            <Download className="h-4 w-4" /> Export
-          </Button>
-          <Button onClick={openAdd} className="gap-2"><Plus className="h-4 w-4" /> Generate</Button>
+          <Button onClick={openGenerate} className="gap-2"><Plus className="h-4 w-4" /> Generate</Button>
         </div>
       </div>
 
@@ -172,51 +252,90 @@ export function SalaryManagement() {
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3">
         <Card><CardContent className="p-4 text-center">
-          <p className="text-xs text-muted-foreground">Paid</p>
+          <p className="text-xs text-muted-foreground">Total Paid</p>
           <p className="text-lg font-bold text-emerald-400">{formatCurrency(totalPaid)}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4 text-center">
-          <p className="text-xs text-muted-foreground">Pending</p>
-          <p className="text-lg font-bold text-amber-400">{formatCurrency(totalPending)}</p>
+          <p className="text-xs text-muted-foreground">Remaining Due</p>
+          <p className="text-lg font-bold text-amber-400">{formatCurrency(totalDue)}</p>
         </CardContent></Card>
       </div>
 
       {loading ? (
-        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
+        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}</div>
       ) : records.length === 0 ? (
-        <EmptyState icon="💰" title="No salary records" description="Generate salary for staff members" action={<Button onClick={openAdd}><Plus className="h-4 w-4 mr-2" />Generate Salary</Button>} />
+        <EmptyState icon="💰" title="No salary records" description="Generate salary for staff members" action={<Button onClick={openGenerate}><Plus className="h-4 w-4 mr-2" />Generate Salary</Button>} />
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-4">
           {records.map((r) => {
             const s = staffList.find((st) => st.id === r.staffId);
+            const rPayments = paymentsMap[r.id!] || [];
+            
             return (
               <Card key={r.id} className="group hover:shadow-md transition-all">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
+                <CardContent className="p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-border pb-4">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-foreground">{s?.name || "Unknown"}</p>
-                        <Badge variant="secondary" className="text-xs capitalize">{r.salaryType}</Badge>
-                        <Badge variant={r.paid ? "success" : "warning"}>{r.paid ? "Paid" : "Pending"}</Badge>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-lg font-bold text-foreground">{s?.name || "Unknown"}</p>
+                        <Badge variant={r.status === "paid" ? "success" : r.status === "partial" ? "warning" : "destructive"}>
+                          {r.status.toUpperCase()}
+                        </Badge>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Present: {r.presentDays}d · Absent: {r.absentDays}d
-                        {r.leaveDeductionAmount > 0 && ` · Leave -${formatCurrency(r.leaveDeductionAmount)}`}
-                        {r.bonus > 0 && ` · Bonus +${formatCurrency(r.bonus)}`}
-                      </p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-3">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Base Salary</p>
+                          <p className="font-semibold">{formatCurrency(r.baseSalary)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Net (+Previous Due)</p>
+                          <p className="font-semibold">{formatCurrency(r.finalSalary + r.previousDue)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground text-emerald-500">Total Paid</p>
+                          <p className="font-semibold text-emerald-600">{formatCurrency(r.totalPaid)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground text-amber-500">Remaining</p>
+                          <p className="font-semibold text-amber-600">{formatCurrency(r.remainingDue)}</p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <p className="text-base font-bold text-foreground">{formatCurrency(r.finalSalary)}</p>
-                      {!r.paid && (
-                        <Button size="sm" variant="outline" onClick={() => handleMarkPaid(r.id!)} className="gap-1 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10">
-                          <CheckCircle className="h-3.5 w-3.5" /> Pay
+                    
+                    <div className="flex sm:flex-col items-center sm:items-end gap-2 shrink-0">
+                      {r.status !== "paid" && (
+                        <Button size="sm" onClick={() => openPayment(r)} className="gap-2 w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/90">
+                          <HandCoins className="h-4 w-4" /> Pay
                         </Button>
                       )}
-                      <button onClick={() => setDeleteId(r.id!)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100">
-                        <Trash2 className="h-3.5 w-3.5" />
+                      <Button size="sm" variant="outline" onClick={() => downloadSlip(r)} className="gap-2 w-full sm:w-auto">
+                        <FileText className="h-4 w-4" /> Slip
+                      </Button>
+                      <button onClick={() => setDeleteId(r.id!)} className="p-2 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors hidden sm:block">
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
+
+                  {/* Payment History Sub-table */}
+                  {rPayments.length > 0 && (
+                    <div className="pt-4">
+                      <p className="text-xs font-semibold text-muted-foreground mb-2">Payment History</p>
+                      <div className="space-y-1.5">
+                        {rPayments.map(p => (
+                          <div key={p.id} className="flex justify-between items-center text-sm p-2 bg-muted/30 rounded-lg">
+                            <div>
+                              <p className="font-medium">{formatCurrency(p.amountPaid)} <span className="text-muted-foreground font-normal text-xs uppercase ml-1">({p.paymentMethod})</span></p>
+                              <p className="text-xs text-muted-foreground">{formatDate(p.paymentDate)}</p>
+                            </div>
+                            <Button size="sm" variant="ghost" onClick={() => downloadReceipt(r, p)} className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground">
+                              <Download className="h-3 w-3" /> Receipt
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -224,36 +343,37 @@ export function SalaryManagement() {
         </div>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Generate Salary">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      {/* Generate Salary Modal */}
+      <Modal open={generateModalOpen} onClose={() => setGenerateModalOpen(false)} title="Generate Salary">
+        <form onSubmit={handleGenSubmit(onGenerate)} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className="text-sm font-medium text-foreground block mb-1.5">Staff Member *</label>
-              <select {...register("staffId", { valueAsNumber: true })} className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <select {...regGen("staffId")} className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <option value="">Select staff...</option>
-                {staffList.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.salaryType === "monthly" ? `₹${s.monthlySalary}/mo` : `₹${s.dailyWage}/day`})</option>)}
+                {staffList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
-              {errors.staffId && <p className="text-xs text-red-400 mt-1">{errors.staffId.message}</p>}
+              {errGen.staffId && <p className="text-xs text-red-400 mt-1">{errGen.staffId.message}</p>}
             </div>
             <div className="col-span-2">
               <label className="text-sm font-medium text-foreground block mb-1.5">Month *</label>
-              <input type="month" {...register("month")} className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+              <input type="month" {...regGen("month")} className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
             </div>
             <div>
               <label className="text-sm font-medium text-foreground block mb-1.5">Bonus (₹)</label>
-              <Input type="number" min={0} {...register("bonus", { valueAsNumber: true })} placeholder="0" />
+              <Input type="number" min={0} {...regGen("bonus", { valueAsNumber: true })} placeholder="0" />
             </div>
             <div>
               <label className="text-sm font-medium text-foreground block mb-1.5">Advance (₹)</label>
-              <Input type="number" min={0} {...register("advance", { valueAsNumber: true })} placeholder="0" />
+              <Input type="number" min={0} {...regGen("advance", { valueAsNumber: true })} placeholder="0" />
             </div>
             <div className="col-span-2">
               <label className="text-sm font-medium text-foreground block mb-1.5">Extra Deduction (₹)</label>
-              <Input type="number" min={0} {...register("extraDeduction", { valueAsNumber: true })} placeholder="0" />
+              <Input type="number" min={0} {...regGen("extraDeduction", { valueAsNumber: true })} placeholder="0" />
             </div>
             <div className="col-span-2">
               <label className="text-sm font-medium text-foreground block mb-1.5">Note</label>
-              <Input {...register("note")} placeholder="Optional note..." />
+              <Input {...regGen("note")} placeholder="Optional note..." />
             </div>
           </div>
 
@@ -274,9 +394,49 @@ export function SalaryManagement() {
           )}
 
           <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setGenerateModalOpen(false)}>Cancel</Button>
             <Button type="submit" className="flex-1" disabled={saving}>
-              {saving ? <Spinner className="h-4 w-4" /> : "Generate Salary"}
+              {saving ? <Spinner className="h-4 w-4" /> : "Generate"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Make Payment Modal */}
+      <Modal open={paymentModalOpen} onClose={() => setPaymentModalOpen(false)} title="Record Payment">
+        <form onSubmit={handlePaySubmit(onPayment)} className="space-y-4">
+          <div className="bg-amber-500/10 text-amber-600 p-3 rounded-lg text-sm font-medium mb-2 border border-amber-500/20">
+            Remaining Due: {selectedRecord ? formatCurrency(selectedRecord.remainingDue) : '₹0'}
+          </div>
+          
+          <div className="grid grid-cols-1 gap-3">
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1.5">Amount to Pay (₹) *</label>
+              <Input type="number" min={1} max={selectedRecord?.remainingDue || 0} {...regPay("amountPaid", { valueAsNumber: true })} />
+              {errPay.amountPaid && <p className="text-xs text-red-400 mt-1">{errPay.amountPaid.message}</p>}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1.5">Payment Method *</label>
+              <select {...regPay("paymentMethod")} className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+                <option value="bank">Bank Transfer</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1.5">Date *</label>
+              <Input type="date" {...regPay("paymentDate")} />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1.5">Note</label>
+              <Input {...regPay("note")} placeholder="Transaction ID, remarks..." />
+            </div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setPaymentModalOpen(false)}>Cancel</Button>
+            <Button type="submit" className="flex-1 bg-primary" disabled={saving}>
+              {saving ? <Spinner className="h-4 w-4 text-white" /> : "Confirm Payment"}
             </Button>
           </div>
         </form>
@@ -285,9 +445,9 @@ export function SalaryManagement() {
       <ConfirmDialog
         open={deleteId !== null}
         onClose={() => setDeleteId(null)}
-        onConfirm={() => deleteId && salaryService.delete(deleteId).then(() => { toast({ type: "success", title: "Deleted" }); loadData(); setDeleteId(null); })}
+        onConfirm={() => deleteId && salaryService.deleteRecord(deleteId).then(() => { toast({ type: "success", title: "Deleted" }); setDeleteId(null); })}
         title="Delete Salary Record"
-        description="This salary record will be permanently deleted."
+        description="This salary record and its payments will be permanently deleted."
         confirmText="Delete"
       />
     </div>

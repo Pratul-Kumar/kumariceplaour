@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
@@ -40,6 +40,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.3.0",
     "dexie": "^4.4.2",
+    "firebase": "^12.13.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.16.0",
@@ -48,6 +49,7 @@
     "recharts": "^3.8.1",
     "tailwind-merge": "^3.6.0",
     "xlsx": "^0.18.5",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "zustand": "^5.0.13"
   }
 }

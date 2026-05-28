@@ -141,6 +141,10 @@
     animation: slide-in 0.3s ease-out;
   }
 
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 1rem);
+  }
+
   .glass {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);

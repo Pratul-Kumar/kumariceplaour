@@ -31,7 +31,7 @@ export function StaffManagement() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<Staff | null>(null);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState("all");
@@ -46,14 +46,14 @@ export function StaffManagement() {
 
   const salaryType = watch("salaryType");
 
-  const loadData = async () => {
+  useEffect(() => {
     setLoading(true);
-    const data = await staffService.getAll();
-    setStaff(data);
-    setLoading(false);
-  };
-
-  useEffect(() => { loadData(); }, []);
+    const unsubscribe = staffService.subscribeAll((data) => {
+      setStaff(data);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const filtered = staff.filter((s) => {
     const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.role.toLowerCase().includes(search.toLowerCase());
@@ -91,7 +91,6 @@ export function StaffManagement() {
         toast({ type: "success", title: "Staff Added", description: `${data.name} added successfully.` });
       }
       setModalOpen(false);
-      loadData();
     } catch {
       toast({ type: "error", title: "Error saving staff" });
     } finally {
@@ -99,15 +98,13 @@ export function StaffManagement() {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     await staffService.delete(id);
     toast({ type: "success", title: "Staff Deleted" });
-    loadData();
   };
 
   const toggleStatus = async (s: Staff) => {
     await staffService.update(s.id!, { status: s.status === "active" ? "inactive" : "active" });
-    loadData();
   };
 
   return (
