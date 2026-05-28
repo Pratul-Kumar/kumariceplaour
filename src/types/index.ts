@@ -79,6 +79,7 @@ export interface SalaryRecord {
   status: "pending" | "partial" | "paid";
   note?: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface SalaryPayment {
@@ -89,6 +90,7 @@ export interface SalaryPayment {
   paymentDate: string;
   paymentMethod: "cash" | "upi" | "bank" | "other";
   note?: string;
+  createdAt: string;
 }
 
 // ============================================================

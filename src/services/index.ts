@@ -1,7 +1,6 @@
-import { 
-  collection, doc, getDocs, addDoc, updateDoc, deleteDoc, 
-  query, where, orderBy, onSnapshot, limit,
-  getDocsFromServer, getDocFromServer
+import {
+  collection, doc, getDocs, addDoc, updateDoc, deleteDoc,
+  query, where, orderBy, onSnapshot, limit, runTransaction, getDoc
 } from "firebase/firestore";
 import { db } from "@/firebase/config";
 import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, LeaveRecord } from "@/types";
@@ -9,10 +8,8 @@ import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, LeaveReco
 const mapDoc = <T>(d: any): T => ({ id: d.id, ...d.data() } as T);
 
 // ─── TTL CACHE ────────────────────────────────────────────────────────────────
-// Historical months (not current) are safe to cache client-side for the session.
-// Current month data always comes from real-time onSnapshot.
-const TTL_MS = 5 * 60 * 1000; // 5 minutes
-
+// Only used for historical (read-only) data. Current month always uses live listeners.
+const TTL_MS = 5 * 60 * 1000;
 interface CacheEntry<T> { data: T; ts: number; }
 class TTLCache<T> {
   private store: Record<string, CacheEntry<T>> = {};
@@ -27,16 +24,12 @@ class TTLCache<T> {
   clear() { this.store = {}; }
 }
 
-const expenseMonthCache   = new TTLCache<number>();
-const expenseCatCache     = new TTLCache<Record<string, number>>();
-const salaryPayCache      = new TTLCache<SalaryPayment[]>();
-const leaveCache          = new TTLCache<LeaveRecord[]>();
+const expenseMonthCache = new TTLCache<number>();
+const expenseCatCache   = new TTLCache<Record<string, number>>();
+const leaveCache        = new TTLCache<LeaveRecord[]>();
 
-// Current month string – updated once per session (good enough)
 const CURRENT_MONTH = new Date().toISOString().slice(0, 7);
-
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
-const isHistorical = (month: string) => month < CURRENT_MONTH;
+const isHistorical  = (month: string) => month < CURRENT_MONTH;
 
 // ─── STAFF SERVICE ────────────────────────────────────────────────────────────
 const staffCol = collection(db, "staff");
@@ -52,17 +45,17 @@ export const staffService = {
     onSnapshot(doc(db, "staff", id), d => cb(d.exists() ? mapDoc<Staff>(d) : null)),
 
   getAll: async () => {
-    const s = await getDocsFromServer(staffCol);
+    const s = await getDocs(staffCol);
     return s.docs.map(mapDoc<Staff>);
   },
 
   getActive: async () => {
-    const s = await getDocsFromServer(query(staffCol, where("status", "==", "active")));
+    const s = await getDocs(query(staffCol, where("status", "==", "active")));
     return s.docs.map(mapDoc<Staff>);
   },
 
   getById: async (id: string) => {
-    const d = await getDocFromServer(doc(db, "staff", id));
+    const d = await getDoc(doc(db, "staff", id));
     return d.exists() ? mapDoc<Staff>(d) : undefined;
   },
 
@@ -73,7 +66,7 @@ export const staffService = {
   update: async (id: string, data: Partial<Staff>) =>
     updateDoc(doc(db, "staff", id), { ...data, updatedAt: new Date().toISOString() }),
   delete: async (id: string) => deleteDoc(doc(db, "staff", id)),
-  count: async () => (await getDocsFromServer(staffCol)).size,
+  count: async () => (await getDocs(staffCol)).size,
 };
 
 // ─── ATTENDANCE SERVICE ───────────────────────────────────────────────────────
@@ -92,8 +85,8 @@ export const attendanceService = {
       where("date", ">=", `${month}-01`),
       where("date", "<=", `${month}-31`)
     );
-    // Historical months: allow local cache (fast). Current month: force server.
-    const snap = isHistorical(month) ? await getDocs(q) : await getDocsFromServer(q);
+    // Use plain getDocs — works with both Firestore cache and network
+    const snap = await getDocs(q);
     return snap.docs.map(mapDoc<Attendance>);
   },
 
@@ -113,7 +106,7 @@ export const attendanceService = {
 
   getTodaySummary: async () => {
     const today = new Date().toISOString().split("T")[0];
-    const snap = await getDocsFromServer(query(attendanceCol, where("date", "==", today)));
+    const snap = await getDocs(query(attendanceCol, where("date", "==", today)));
     const summary = { present: 0, absent: 0, half_day: 0, leave: 0, total: snap.size };
     snap.docs.forEach(d => {
       const s = d.data().status as keyof typeof summary;
@@ -136,7 +129,6 @@ export const expenseService = {
     );
     return onSnapshot(q, snap => {
       const data = snap.docs.map(mapDoc<Expense>);
-      // Populate cache from live snapshot (always fresh)
       let total = 0;
       const cats: Record<string, number> = {};
       data.forEach(e => { total += e.amount; cats[e.category] = (cats[e.category] || 0) + e.amount; });
@@ -150,8 +142,7 @@ export const expenseService = {
     const cached = expenseMonthCache.get(month);
     if (cached !== undefined) return cached;
     const q = query(expensesCol, where("date", ">=", `${month}-01`), where("date", "<=", `${month}-31`));
-    // Historical: allow local Firestore cache (instant); current: server
-    const snap = isHistorical(month) ? await getDocs(q) : await getDocsFromServer(q);
+    const snap = await getDocs(q);
     const total = snap.docs.reduce((s, d) => s + d.data().amount, 0);
     expenseMonthCache.set(month, total);
     return total;
@@ -161,7 +152,7 @@ export const expenseService = {
     const cached = expenseCatCache.get(month);
     if (cached !== undefined) return cached;
     const q = query(expensesCol, where("date", ">=", `${month}-01`), where("date", "<=", `${month}-31`));
-    const snap = isHistorical(month) ? await getDocs(q) : await getDocsFromServer(q);
+    const snap = await getDocs(q);
     const totals: Record<string, number> = {};
     snap.docs.forEach(d => { const c = d.data().category; totals[c] = (totals[c] || 0) + d.data().amount; });
     expenseCatCache.set(month, totals);
@@ -170,13 +161,13 @@ export const expenseService = {
 
   getTodayTotal: async () => {
     const today = new Date().toISOString().split("T")[0];
-    const snap = await getDocsFromServer(query(expensesCol, where("date", "==", today)));
+    const snap = await getDocs(query(expensesCol, where("date", "==", today)));
     return snap.docs.reduce((s, d) => s + d.data().amount, 0);
   },
 
   getRecent: async (limitCount = 10) => {
     const q = query(expensesCol, orderBy("date", "desc"), limit(limitCount));
-    const snap = await getDocsFromServer(q);
+    const snap = await getDocs(q);
     return snap.docs.map(mapDoc<Expense>);
   },
 
@@ -199,22 +190,84 @@ export const expenseService = {
 };
 
 // ─── SALARY SERVICE ───────────────────────────────────────────────────────────
-const salaryCol = collection(db, "salaryRecords");
+const salaryCol       = collection(db, "salaryRecords");
 const salaryPaymentsCol = collection(db, "salaryPayments");
 
 export const salaryService = {
+  // ── Real-time subscriptions ─────────────────────────────────────────────────
+  
+  /** Live records for a specific month — used by salary page */
   subscribeByMonth: (month: number, year: number, cb: (d: SalaryRecord[]) => void) => {
     const q = query(salaryCol, where("month", "==", month), where("year", "==", year));
     return onSnapshot(q, s => cb(s.docs.map(mapDoc<SalaryRecord>)));
   },
 
+  /** Live records for a specific staff member — for staff profile / history */
+  subscribeRecordsByStaff: (staffId: string, cb: (d: SalaryRecord[]) => void) => {
+    const q = query(salaryCol, where("staffId", "==", staffId), orderBy("createdAt", "desc"));
+    return onSnapshot(q, s => cb(s.docs.map(mapDoc<SalaryRecord>)));
+  },
+
+  /** Live payments for a specific salary record — CROSS-DEVICE SYNC FIX */
+  subscribePaymentsByRecord: (recordId: string, cb: (d: SalaryPayment[]) => void) => {
+    const q = query(salaryPaymentsCol, where("salaryRecordId", "==", recordId), orderBy("paymentDate", "desc"));
+    return onSnapshot(q, s => cb(s.docs.map(mapDoc<SalaryPayment>)));
+  },
+
+  /** Live payments for a staff member (all time) */
+  subscribePaymentsByStaff: (staffId: string, cb: (d: SalaryPayment[]) => void) => {
+    const q = query(salaryPaymentsCol, where("staffId", "==", staffId), orderBy("paymentDate", "desc"));
+    return onSnapshot(q, s => cb(s.docs.map(mapDoc<SalaryPayment>)));
+  },
+
+  /** Live pending/partial records — for dashboard salary due total */
   subscribePending: (cb: (d: SalaryRecord[]) => void) =>
     onSnapshot(query(salaryCol, where("status", "!=", "paid")), s => cb(s.docs.map(mapDoc<SalaryRecord>))),
 
+  // ── One-time reads (all use plain getDocs — no server-forced reads) ─────────
+
   getPending: async () => {
-    const s = await getDocsFromServer(query(salaryCol, where("status", "!=", "paid")));
+    const s = await getDocs(query(salaryCol, where("status", "!=", "paid")));
     return s.docs.map(mapDoc<SalaryRecord>);
   },
+
+  /** Get all salary records for a staff member — for previous due calculation */
+  getByStaff: async (staffId: string): Promise<SalaryRecord[]> => {
+    const q = query(salaryCol, where("staffId", "==", staffId), orderBy("createdAt", "desc"));
+    const snap = await getDocs(q);
+    return snap.docs.map(mapDoc<SalaryRecord>);
+  },
+
+  /**
+   * Get the most recent unpaid/partial record for a staff member BEFORE a given month.
+   * Used during salary generation to automatically carry forward dues.
+   */
+  getLastUnpaidRecord: async (staffId: string, beforeYear: number, beforeMonth: number): Promise<SalaryRecord | null> => {
+    const q = query(salaryCol, where("staffId", "==", staffId), orderBy("createdAt", "desc"), limit(10));
+    const snap = await getDocs(q);
+    const records = snap.docs.map(mapDoc<SalaryRecord>);
+    // Find the most recent record that is before the target month and has remaining dues
+    const target = records.find(r => {
+      const isBefore = r.year < beforeYear || (r.year === beforeYear && r.month < beforeMonth);
+      return isBefore && r.remainingDue > 0;
+    });
+    return target || null;
+  },
+
+  /** Check if a salary record already exists for a staff+month+year */
+  getExistingRecord: async (staffId: string, month: number, year: number): Promise<SalaryRecord | null> => {
+    const q = query(salaryCol, where("staffId", "==", staffId), where("month", "==", month), where("year", "==", year));
+    const snap = await getDocs(q);
+    return snap.empty ? null : mapDoc<SalaryRecord>(snap.docs[0]);
+  },
+
+  getPaymentsForRecord: async (salaryRecordId: string): Promise<SalaryPayment[]> => {
+    const q = query(salaryPaymentsCol, where("salaryRecordId", "==", salaryRecordId), orderBy("paymentDate", "desc"));
+    const snap = await getDocs(q);
+    return snap.docs.map(mapDoc<SalaryPayment>);
+  },
+
+  // ── Writes ──────────────────────────────────────────────────────────────────
 
   addRecord: async (data: Omit<SalaryRecord, "id" | "createdAt" | "updatedAt">) => {
     const now = new Date().toISOString();
@@ -222,41 +275,55 @@ export const salaryService = {
   },
 
   updateRecord: async (id: string, data: Partial<SalaryRecord>) =>
-    updateDoc(doc(db, "salaryRecords", id), data),
+    updateDoc(doc(db, "salaryRecords", id), { ...data, updatedAt: new Date().toISOString() }),
 
-  deleteRecord: async (id: string) => deleteDoc(doc(db, "salaryRecords", id)),
-
-  addPayment: async (data: Omit<SalaryPayment, "id">) => {
-    const paymentRef = await addDoc(salaryPaymentsCol, data);
-    // Invalidate payment cache for this record
-    salaryPayCache.del(data.salaryRecordId);
-    // Update parent salary record
-    const recordDoc = await getDocFromServer(doc(db, "salaryRecords", data.salaryRecordId));
-    if (recordDoc.exists()) {
-      const record = recordDoc.data() as SalaryRecord;
-      const newTotalPaid = (record.totalPaid || 0) + data.amountPaid;
-      const totalDue = record.finalSalary + (record.previousDue || 0);
-      const remainingDue = totalDue - newTotalPaid;
-      const status = remainingDue <= 0 ? "paid" : newTotalPaid > 0 ? "partial" : "pending";
-      await updateDoc(doc(db, "salaryRecords", data.salaryRecordId), { totalPaid: newTotalPaid, remainingDue, status });
-    }
-    return paymentRef;
+  deleteRecord: async (id: string) => {
+    // Also delete all payments for this record
+    const q = query(salaryPaymentsCol, where("salaryRecordId", "==", id));
+    const snap = await getDocs(q);
+    const deletes = snap.docs.map(d => deleteDoc(d.ref));
+    await Promise.all(deletes);
+    return deleteDoc(doc(db, "salaryRecords", id));
   },
 
-  getPaymentsForRecord: async (salaryRecordId: string): Promise<SalaryPayment[]> => {
-    const cached = salaryPayCache.get(salaryRecordId);
-    if (cached !== undefined) return cached;
-    const q = query(salaryPaymentsCol, where("salaryRecordId", "==", salaryRecordId), orderBy("paymentDate", "desc"));
-    const snap = await getDocsFromServer(q);
-    const data = snap.docs.map(mapDoc<SalaryPayment>);
-    salaryPayCache.set(salaryRecordId, data);
-    return data;
-  },
+  /**
+   * Add a payment and atomically update the salary record totals.
+   * Uses Firestore runTransaction for consistency — prevents race conditions
+   * when two devices try to record payments simultaneously.
+   */
+  addPayment: async (data: Omit<SalaryPayment, "id" | "createdAt">): Promise<string> => {
+    const now = new Date().toISOString();
+    const recordRef = doc(db, "salaryRecords", data.salaryRecordId);
 
-  getByStaff: async (staffId: string) => {
-    const q = query(salaryCol, where("staffId", "==", staffId));
-    const snap = await getDocsFromServer(q);
-    return snap.docs.map(mapDoc<SalaryRecord>).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    let newPaymentId = "";
+
+    await runTransaction(db, async (tx) => {
+      const recordSnap = await tx.get(recordRef);
+      if (!recordSnap.exists()) throw new Error("Salary record not found");
+
+      const record = recordSnap.data() as SalaryRecord;
+      const currentPaid   = record.totalPaid    || 0;
+      const totalDue      = record.finalSalary + (record.previousDue || 0);
+      const newTotalPaid  = currentPaid + data.amountPaid;
+      const remainingDue  = Math.max(0, totalDue - newTotalPaid);
+      const status: SalaryRecord["status"] =
+        remainingDue <= 0 ? "paid" : newTotalPaid > 0 ? "partial" : "pending";
+
+      // Write the new payment doc inside the transaction
+      const paymentRef = doc(salaryPaymentsCol);
+      tx.set(paymentRef, { ...data, createdAt: now });
+      newPaymentId = paymentRef.id;
+
+      // Atomically update the salary record
+      tx.update(recordRef, {
+        totalPaid: newTotalPaid,
+        remainingDue,
+        status,
+        updatedAt: now,
+      });
+    });
+
+    return newPaymentId;
   },
 };
 
@@ -271,13 +338,13 @@ export const leaveService = {
 
   getTodayCount: async () => {
     const today = new Date().toISOString().split("T")[0];
-    const snap = await getDocsFromServer(query(leavesCol, where("leaveDate", "==", today)));
+    const snap = await getDocs(query(leavesCol, where("leaveDate", "==", today)));
     return snap.size;
   },
 
   getByStaff: async (staffId: string) => {
     const q = query(leavesCol, where("staffId", "==", staffId), orderBy("leaveDate", "desc"));
-    const snap = await getDocsFromServer(q);
+    const snap = await getDocs(q);
     return snap.docs.map(mapDoc<LeaveRecord>);
   },
 
@@ -285,7 +352,7 @@ export const leaveService = {
     const cached = leaveCache.get(month);
     if (cached !== undefined) return cached;
     const q = query(leavesCol, where("leaveDate", ">=", `${month}-01`), where("leaveDate", "<=", `${month}-31`), orderBy("leaveDate", "asc"));
-    const snap = isHistorical(month) ? await getDocs(q) : await getDocsFromServer(q);
+    const snap = await getDocs(q);
     const data = snap.docs.map(mapDoc<LeaveRecord>);
     leaveCache.set(month, data);
     return data;
