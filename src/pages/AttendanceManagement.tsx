@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, memo } from "react";
-import { getDaysInMonth, parseISO, format, addMonths, subMonths } from "date-fns";
-import { CheckCircle, XCircle, Clock, CalendarOff, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { getDaysInMonth, parseISO, format, addMonths, subMonths, getDay } from "date-fns";
+import { CheckCircle, XCircle, Clock, CalendarOff, Trash2, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { Card, CardContent, Skeleton, EmptyState, Badge } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import { staffService, attendanceService } from "@/services";
@@ -113,8 +113,15 @@ export function AttendanceManagement() {
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState(getCurrentMonth());
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split("T")[0]);
-  const [viewMode, setViewMode] = useState<"daily" | "monthly">("daily"); // Default daily on mobile
+  const [viewMode, setViewMode] = useState<"daily" | "employee">("employee"); // Default employee
+  const [selectedStaffId, setSelectedStaffId] = useState<string>("");
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (staff.length > 0 && !selectedStaffId) {
+      setSelectedStaffId(staff[0].id!);
+    }
+  }, [staff, selectedStaffId]);
 
   // Derive query month — viewMode is display-only, doesn't change query
   const queryMonth = useMemo(() => {
@@ -221,6 +228,17 @@ export function AttendanceManagement() {
         {/* View Mode Toggle (full width on mobile) */}
         <div className="flex bg-muted p-1 rounded-xl gap-1">
           <button
+            onClick={() => setViewMode("employee")}
+            className={cn(
+              "flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all",
+              viewMode === "employee"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground"
+            )}
+          >
+            Employee View
+          </button>
+          <button
             onClick={() => setViewMode("daily")}
             className={cn(
               "flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all",
@@ -230,17 +248,6 @@ export function AttendanceManagement() {
             )}
           >
             Daily View
-          </button>
-          <button
-            onClick={() => setViewMode("monthly")}
-            className={cn(
-              "flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all",
-              viewMode === "monthly"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground"
-            )}
-          >
-            Monthly Grid
           </button>
         </div>
 
@@ -328,85 +335,129 @@ export function AttendanceManagement() {
             </div>
           )}
 
-          {/* ──────────────── MONTHLY GRID ────────────────────────── */}
-          {viewMode === "monthly" && (
-            <div className="space-y-3">
-              {/* Mobile: per-staff cards with mini grid */}
-              <div className="md:hidden space-y-3">
-                {staff.map(s => {
-                  const staffAtt = attendanceMap[s.id!] || {};
-                  let p = 0, a = 0, h = 0, l = 0;
-                  days.forEach(d => {
-                    const st = staffAtt[d];
-                    if (st === "present") p++;
-                    else if (st === "absent") a++;
-                    else if (st === "half_day") h++;
-                    else if (st === "leave") l++;
-                  });
+          {/* ──────────────── EMPLOYEE VIEW ────────────────────────── */}
+          {viewMode === "employee" && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              
+              <div className="md:hidden space-y-4">
+                {/* Employee Selection Dropdown */}
+                <div className="relative">
+                  <select
+                    value={selectedStaffId}
+                    onChange={(e) => setSelectedStaffId(e.target.value)}
+                    className="w-full h-14 pl-4 pr-10 rounded-2xl border-2 border-transparent bg-muted/50 text-foreground font-semibold text-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary transition-all appearance-none cursor-pointer hover:bg-muted/80 shadow-sm"
+                  >
+                    <option value="" disabled>Select Employee</option>
+                    {staff.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none" />
+                </div>
 
-                  return (
-                    <Card key={s.id} className="overflow-hidden">
-                      <CardContent className="p-4">
-                        {/* Staff info + summary */}
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${generateAvatarColor(s.name)} flex items-center justify-center text-white font-bold shrink-0 text-sm`}>
-                            {getInitials(s.name)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-foreground truncate text-sm">{s.name}</p>
-                            <p className="text-xs text-muted-foreground">{s.role || "Staff"}</p>
-                          </div>
+                {/* Calendar Card */}
+                {selectedStaffId && (
+                  <Card className="overflow-hidden border-0 shadow-md rounded-3xl bg-card">
+                    <CardContent className="p-5 sm:p-6">
+                      {/* Header: Month & Year */}
+                      <div className="flex items-center justify-between mb-6">
+                        <h2 className="text-xl font-bold text-foreground">
+                          {format(parseISO(`${month}-01`), "MMMM yyyy")}
+                        </h2>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => navigateMonth(-1)}
+                            className="h-10 w-10 shrink-0 flex items-center justify-center rounded-full border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95 shadow-sm"
+                          >
+                            <ChevronLeft className="h-5 w-5" />
+                          </button>
+                          <button
+                            onClick={() => navigateMonth(1)}
+                            className="h-10 w-10 shrink-0 flex items-center justify-center rounded-full border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95 shadow-sm"
+                          >
+                            <ChevronRight className="h-5 w-5" />
+                          </button>
                         </div>
+                      </div>
 
-                        {/* Summary chips */}
-                        <div className="flex gap-1.5 flex-wrap mb-3">
-                          <SummaryChip label="P" value={p} color="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" />
-                          <SummaryChip label="A" value={a} color="bg-red-500/15 text-red-700 dark:text-red-400" />
-                          <SummaryChip label="H" value={h} color="bg-amber-500/15 text-amber-700 dark:text-amber-400" />
-                          <SummaryChip label="L" value={l} color="bg-blue-500/15 text-blue-700 dark:text-blue-400" />
-                          <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-muted text-muted-foreground ml-auto">
-                            <span>{daysInMonth - p - a - h - l}</span>
-                            <span>unmarked</span>
+                      {/* Calendar Grid */}
+                      <div className="grid grid-cols-7 gap-y-4 gap-x-2">
+                        {/* Weekday Headers */}
+                        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
+                          <div key={day} className="text-center text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                            {day}
                           </div>
-                        </div>
+                        ))}
 
-                        {/* Mini day grid — scrollable, compact */}
-                        <div className="overflow-x-auto -mx-1 pb-1">
-                          <div className="flex gap-1 px-1" style={{ minWidth: "max-content" }}>
-                            {days.map((date, i) => {
-                              const status = staffAtt[date];
-                              const cfg = status ? STATUS_CONFIG[status] : null;
-                              const isToday = date === new Date().toISOString().split("T")[0];
-                              return (
-                                <button
-                                  key={date}
-                                  onClick={() => handleCellClick(s.id!, date, status)}
-                                  className={cn(
-                                    "flex flex-col items-center justify-center rounded-lg transition-all active:scale-90 touch-manipulation select-none shrink-0",
-                                    "w-8 h-10",
-                                    cfg
-                                      ? `${cfg.bg} ${cfg.text} shadow-sm`
-                                      : isToday
-                                        ? "bg-primary/10 text-primary ring-1 ring-primary/40"
-                                        : "bg-muted/60 text-muted-foreground"
-                                  )}
-                                >
-                                  <span className="text-[9px] leading-none text-current opacity-60">{i + 1}</span>
-                                  <span className="text-xs font-bold leading-none mt-0.5">{cfg ? cfg.short : "·"}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
+                        {/* Blank cells for start of month */}
+                        {Array.from({ length: getDay(parseISO(`${month}-01`)) }).map((_, i) => (
+                          <div key={`empty-${i}`} className="h-10 sm:h-12 w-full" />
+                        ))}
+
+                        {/* Date Cells */}
+                        {days.map((date) => {
+                          const dayNum = parseInt(date.split("-")[2], 10);
+                          const isToday = date === new Date().toISOString().split("T")[0];
+                          const status = attendanceMap[selectedStaffId]?.[date];
+                          const cfg = status ? STATUS_CONFIG[status] : null;
+
+                          return (
+                            <div key={date} className="flex justify-center relative">
+                              <button
+                                onClick={() => handleCellClick(selectedStaffId, date, status)}
+                                className={cn(
+                                  "relative flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full transition-all active:scale-90 touch-manipulation select-none",
+                                  cfg
+                                    ? `${cfg.bg} ${cfg.text} shadow-sm`
+                                    : isToday
+                                      ? "bg-primary/10 text-primary ring-2 ring-primary ring-offset-2 ring-offset-background font-bold"
+                                      : "bg-transparent text-foreground hover:bg-muted"
+                                )}
+                              >
+                                <span className={cn(
+                                  "text-sm sm:text-base font-semibold",
+                                  !cfg && !isToday && "text-muted-foreground"
+                                )}>
+                                  {dayNum}
+                                </span>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Employee Summary Stats */}
+                {selectedStaffId && (
+                  <div className="grid grid-cols-4 gap-2">
+                    {STATUS_ENTRIES.map(([key, cfg]) => {
+                      const st = attendanceMap[selectedStaffId] || {};
+                      let count = 0;
+                      Object.values(st).forEach(v => { if (v === key) count++; });
+                      return (
+                        <div key={key} className={cn("p-3 rounded-2xl flex flex-col items-center justify-center gap-1 shadow-sm", cfg.bg)}>
+                          <span className={cn("text-lg font-bold leading-none", cfg.text)}>{count}</span>
+                          <span className={cn("text-[10px] font-bold uppercase tracking-wider", cfg.text, "opacity-80")}>{cfg.short}</span>
                         </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Desktop: full table */}
               <Card className="hidden md:block overflow-hidden border-border shadow-sm">
                 <div className="overflow-x-auto">
+                  <div className="p-4 bg-muted/50 border-b flex justify-between items-center">
+                    <h3 className="font-semibold text-foreground">Attendance Grid</h3>
+                    <div className="flex gap-2">
+                      <button onClick={() => navigateMonth(-1)} className="h-8 w-8 flex items-center justify-center rounded border bg-background hover:bg-accent"><ChevronLeft className="h-4 w-4" /></button>
+                      <span className="px-3 py-1 font-medium">{format(parseISO(`${month}-01`), "MMMM yyyy")}</span>
+                      <button onClick={() => navigateMonth(1)} className="h-8 w-8 flex items-center justify-center rounded border bg-background hover:bg-accent"><ChevronRight className="h-4 w-4" /></button>
+                    </div>
+                  </div>
                   <table className="w-full text-sm text-left border-collapse" style={{ minWidth: `${120 + daysInMonth * 34 + 160}px` }}>
                     <thead>
                       <tr className="bg-muted/50 border-b border-border">
