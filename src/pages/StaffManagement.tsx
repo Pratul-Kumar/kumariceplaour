@@ -82,17 +82,25 @@ export function StaffManagement() {
   const onSubmit = async (data: StaffFormData) => {
     setSaving(true);
     try {
-      const now = new Date().toISOString();
       if (editItem?.id) {
-        await staffService.update(editItem.id, { ...data, updatedAt: now });
+        await staffService.update(editItem.id, { ...data });
         toast({ type: "success", title: "Staff Updated" });
       } else {
-        await staffService.add({ ...data, leaveCount: 0, status: "active", createdAt: now, updatedAt: now } as Omit<Staff, "id">);
+        await staffService.add({
+          ...data,
+          leaveCount: 0,
+          status: "active",
+        } as any);
         toast({ type: "success", title: "Staff Added", description: `${data.name} added successfully.` });
       }
       setModalOpen(false);
-    } catch {
-      toast({ type: "error", title: "Error saving staff" });
+    } catch (err: any) {
+      console.error("[StaffManagement.onSubmit]", err);
+      toast({
+        type: "error",
+        title: "Failed to save staff",
+        description: err?.message || "Check your internet connection and try again.",
+      });
     } finally {
       setSaving(false);
     }

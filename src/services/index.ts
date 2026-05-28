@@ -36,7 +36,11 @@ const staffCol = collection(db, "staff");
 
 export const staffService = {
   subscribeAll: (cb: (d: Staff[]) => void) =>
-    onSnapshot(staffCol, s => cb(s.docs.map(mapDoc<Staff>))),
+    onSnapshot(
+      staffCol,
+      s => cb(s.docs.map(mapDoc<Staff>)),
+      err => console.error("[staffService.subscribeAll]", err.message)
+    ),
 
   subscribeActive: (cb: (d: Staff[]) => void) =>
     onSnapshot(
@@ -46,7 +50,11 @@ export const staffService = {
     ),
 
   subscribeById: (id: string, cb: (d: Staff | null) => void) =>
-    onSnapshot(doc(db, "staff", id), d => cb(d.exists() ? mapDoc<Staff>(d) : null)),
+    onSnapshot(
+      doc(db, "staff", id),
+      d => cb(d.exists() ? mapDoc<Staff>(d) : null),
+      err => console.error("[staffService.subscribeById]", err.message)
+    ),
 
   getAll: async () => {
     const s = await getDocs(staffCol);
