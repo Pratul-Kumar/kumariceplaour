@@ -1,0 +1,200 @@
+import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { ArrowLeft, Phone, Calendar, IndianRupee, Award } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, Badge, Skeleton, Button } from "@/components/ui";
+import { staffService, salaryService, leaveService, attendanceService } from "@/services";
+import { type Staff, type SalaryRecord, type LeaveRecord, type Attendance } from "@/types";
+import { formatCurrency, formatDate, formatMonth, getInitials, generateAvatarColor } from "@/lib/utils";
+
+export function StaffProfile() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [staff, setStaff] = useState<Staff | null>(null);
+  const [salaryHistory, setSalaryHistory] = useState<SalaryRecord[]>([]);
+  const [leaveHistory, setLeaveHistory] = useState<LeaveRecord[]>([]);
+  const [currentMonthAtt, setCurrentMonthAtt] = useState<Attendance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"salary" | "leave" | "attendance">("salary");
+
+  useEffect(() => {
+    if (!id) return;
+    const staffId = Number(id);
+    Promise.all([
+      staffService.getById(staffId),
+      salaryService.getByStaff(staffId),
+      leaveService.getByStaff(staffId),
+      attendanceService.getByStaffAndMonth(staffId, new Date().toISOString().slice(0, 7)),
+    ]).then(([s, sal, lv, att]) => {
+      setStaff(s || null);
+      setSalaryHistory(sal);
+      setLeaveHistory(lv);
+      setCurrentMonthAtt(att);
+      setLoading(false);
+    });
+  }, [id]);
+
+  if (loading) return (
+    <div className="space-y-4 pb-20 lg:pb-6">
+      <Skeleton className="h-40 rounded-2xl" />
+      <Skeleton className="h-64 rounded-2xl" />
+    </div>
+  );
+
+  if (!staff) return <div className="text-center py-20 text-muted-foreground">Staff not found</div>;
+
+  const presentDays = currentMonthAtt.filter((a) => a.status === "present").length;
+  const absentDays = currentMonthAtt.filter((a) => a.status === "absent").length;
+  const halfDays = currentMonthAtt.filter((a) => a.status === "half_day").length;
+
+  return (
+    <div className="space-y-5 pb-20 lg:pb-6">
+      <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+        <ArrowLeft className="h-4 w-4" /> Back
+      </button>
+
+      {/* Profile Card */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-start gap-4">
+            <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${generateAvatarColor(staff.name)} flex items-center justify-center text-white text-xl font-bold shadow-lg`}>
+              {getInitials(staff.name)}
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl font-bold text-foreground">{staff.name}</h1>
+                <Badge variant={staff.status === "active" ? "success" : "secondary"}>{staff.status}</Badge>
+                <Badge variant="secondary" className="capitalize">{staff.salaryType}</Badge>
+              </div>
+              <p className="text-muted-foreground capitalize mt-1">{staff.role}</p>
+              <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" />{staff.phone}</p>
+              {staff.note && <p className="text-xs text-muted-foreground mt-2 italic">"{staff.note}"</p>}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
+            <div className="bg-muted/50 rounded-xl p-3 text-center">
+              <p className="text-xs text-muted-foreground">Salary</p>
+              <p className="text-sm font-bold text-foreground mt-1">
+                {staff.salaryType === "monthly" ? formatCurrency(staff.monthlySalary) : formatCurrency(staff.dailyWage)}
+              </p>
+              <p className="text-xs text-muted-foreground">{staff.salaryType === "monthly" ? "/month" : "/day"}</p>
+            </div>
+            <div className="bg-muted/50 rounded-xl p-3 text-center">
+              <p className="text-xs text-muted-foreground">Leaves Taken</p>
+              <p className={`text-sm font-bold mt-1 ${staff.leaveCount > staff.allowedCasualLeavesPerMonth ? "text-red-400" : "text-foreground"}`}>{staff.leaveCount}</p>
+              <p className="text-xs text-muted-foreground">{staff.allowedCasualLeavesPerMonth} allowed</p>
+            </div>
+            <div className="bg-emerald-500/10 rounded-xl p-3 text-center">
+              <p className="text-xs text-muted-foreground">Present</p>
+              <p className="text-sm font-bold text-emerald-400 mt-1">{presentDays}</p>
+              <p className="text-xs text-muted-foreground">this month</p>
+            </div>
+            <div className="bg-muted/50 rounded-xl p-3 text-center">
+              <p className="text-xs text-muted-foreground">Joined</p>
+              <p className="text-sm font-bold text-foreground mt-1">{formatDate(staff.joiningDate)}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Tabs */}
+      <div className="flex rounded-xl bg-muted p-1 gap-1">
+        {(["salary", "leave", "attendance"] as const).map((t) => (
+          <button key={t} onClick={() => setTab(t)} className={`flex-1 py-2 text-sm font-medium rounded-lg capitalize transition-all ${tab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+            {t === "salary" ? "💰 Salary" : t === "leave" ? "🏖️ Leave" : "📋 Attendance"}
+          </button>
+        ))}
+      </div>
+
+      {/* Salary History */}
+      {tab === "salary" && (
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Salary History</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            {salaryHistory.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8 text-sm">No salary records yet</p>
+            ) : (
+              <div className="divide-y divide-border">
+                {salaryHistory.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between px-5 py-4">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{formatMonth(s.month)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Present: {s.presentDays}d · Absent: {s.absentDays}d
+                        {s.leaveDeductionAmount > 0 && ` · Deducted: ${formatCurrency(s.leaveDeductionAmount)}`}
+                        {s.bonus > 0 && ` · Bonus: ${formatCurrency(s.bonus)}`}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-foreground">{formatCurrency(s.finalSalary)}</p>
+                      <Badge variant={s.paid ? "success" : "warning"}>{s.paid ? "Paid" : "Pending"}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Leave History */}
+      {tab === "leave" && (
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Leave History</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            {leaveHistory.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8 text-sm">No leave records yet</p>
+            ) : (
+              <div className="divide-y divide-border">
+                {leaveHistory.map((l) => (
+                  <div key={l.id} className="flex items-center justify-between px-5 py-4">
+                    <div>
+                      <p className="text-sm font-medium text-foreground capitalize">{l.leaveType.replace("_", " ")} Leave</p>
+                      <p className="text-xs text-muted-foreground">{formatDate(l.leaveDate)}</p>
+                      {l.reason && <p className="text-xs text-muted-foreground/70 italic">{l.reason}</p>}
+                    </div>
+                    <Badge variant={l.approved ? "success" : "warning"}>{l.approved ? "Approved" : "Pending"}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Attendance Summary */}
+      {tab === "attendance" && (
+        <Card>
+          <CardHeader><CardTitle className="text-sm">This Month's Attendance</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="bg-emerald-500/10 rounded-xl p-3 text-center">
+                <p className="text-xs text-muted-foreground">Present</p>
+                <p className="text-xl font-bold text-emerald-400">{presentDays}</p>
+              </div>
+              <div className="bg-red-500/10 rounded-xl p-3 text-center">
+                <p className="text-xs text-muted-foreground">Absent</p>
+                <p className="text-xl font-bold text-red-400">{absentDays}</p>
+              </div>
+              <div className="bg-amber-500/10 rounded-xl p-3 text-center">
+                <p className="text-xs text-muted-foreground">Half Day</p>
+                <p className="text-xl font-bold text-amber-400">{halfDays}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {currentMonthAtt.slice(0, 31).map((a) => (
+                <div key={a.id || a.date} title={`${a.date}: ${a.status}`} className={`aspect-square rounded text-xs flex items-center justify-center font-medium ${
+                  a.status === "present" ? "bg-emerald-500/20 text-emerald-400" :
+                  a.status === "absent" ? "bg-red-500/20 text-red-400" :
+                  a.status === "half_day" ? "bg-amber-500/20 text-amber-400" :
+                  "bg-blue-500/20 text-blue-400"
+                }`}>
+                  {parseInt(a.date.slice(8))}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}

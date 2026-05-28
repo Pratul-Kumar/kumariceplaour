@@ -1,0 +1,4 @@
+{
+  "name": "kumar-ice-parlour",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
