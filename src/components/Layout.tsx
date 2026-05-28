@@ -130,7 +130,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
           
           <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 group hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer" onClick={handleLogout}>
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold group-hover:from-red-500 group-hover:to-red-600">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold group-hover:from-red-500 group-hover:to-red-600">
               {user?.email?.charAt(0).toUpperCase() || 'A'}
             </div>
             <div className="flex-1 min-w-0">
@@ -152,9 +152,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
               className="text-muted-foreground hover:text-foreground lg:hidden p-2 rounded-lg hover:bg-accent transition-colors active:bg-accent/80"
             >
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center shadow text-sm shrink-0">
-                  🍦
+                <div className="w-10 h-10 rounded-xl  border border-border/50 flex items-center justify-center shadow-sm">
+                <img src="/logo.png" alt="Logo" className="w-10 h-7 object-contain" />
                 </div>
+
               </div>
             </button>
             <div>

@@ -157,9 +157,9 @@ export function Settings() {
       <Card>
         <CardContent className="p-5">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center shadow-lg text-2xl">
-              🍦
-            </div>
+                <div className="w-10 h-10 rounded-xl  border border-border/50 flex items-center justify-center shadow-sm">
+                <img src="/logo.png" alt="Logo" className="w-10 h-7 object-contain" />
+                </div>
             <div>
               <h3 className="font-bold text-foreground">Kumar Ice Parlour</h3>
               <p className="text-xs text-muted-foreground">Business Manager v1.0.0</p>
