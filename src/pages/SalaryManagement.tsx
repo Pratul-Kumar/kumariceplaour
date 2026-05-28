@@ -9,8 +9,7 @@ import { useToast } from "@/components/ui/toast";
 import { staffService, salaryService, attendanceService } from "@/services";
 import { type Staff, type SalaryRecord, type SalaryPayment, calculateSalary } from "@/types";
 import { formatCurrency, formatMonth, getCurrentMonth, formatDate } from "@/lib/utils";
-import { generateSalarySlip } from "@/services/pdf/generateSalarySlip";
-import { generatePaymentReceipt } from "@/services/pdf/generatePaymentReceipt";
+// PDF generators loaded dynamically on-click (saves jsPDF bundle on initial load)
 
 const salarySchema = z.object({
   staffId: z.string().min(1, "Select a staff member"),
@@ -228,12 +227,14 @@ export function SalaryManagement() {
       else if (att.status === 'half_day') h++;
     });
 
+    const { generateSalarySlip } = await import("@/services/pdf/generateSalarySlip");
     generateSalarySlip(staff, record, payments, { workingDays: w, presentDays: p, absentDays: a, leaveDays: l, halfDays: h });
   };
 
   const downloadReceipt = async (record: SalaryRecord, payment: SalaryPayment) => {
     const staff = staffList.find(s => s.id === record.staffId);
     if (!staff) return;
+    const { generatePaymentReceipt } = await import("@/services/pdf/generatePaymentReceipt");
     generatePaymentReceipt(staff, record, payment);
   };
 

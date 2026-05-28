@@ -1,14 +1,22 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { visualizer } from "rollup-plugin-visualizer";
 
 export default defineConfig({
   plugins: [
     react({
-      // Babel is only needed for React Refresh in dev; prod uses esbuild (faster)
       babel: { babelrc: false, configFile: false },
     }),
-  ],
+    // Bundle analyzer — run: ANALYZE=true npm run build
+    process.env.ANALYZE === "true" && visualizer({
+      filename: "dist/bundle-stats.html",
+      open: true,
+      gzipSize: true,
+      brotliSize: true,
+      template: "treemap",
+    }),
+  ].filter(Boolean),
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
   },

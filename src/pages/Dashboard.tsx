@@ -1,16 +1,17 @@
-import { useEffect, useState, memo, useMemo } from "react";
+import { useEffect, useState, memo, useMemo, lazy, Suspense } from "react";
 import {
   TrendingDown, Users, CalendarOff, Clock, ArrowUpRight,
   IndianRupee, Receipt, Zap, AlertCircle
 } from "lucide-react";
-import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
-} from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, Skeleton, Badge, EmptyState } from "@/components/ui";
 import { expenseService, staffService, salaryService, leaveService } from "@/services";
 import { formatCurrency, formatDate, getCurrentMonth, getLast12Months, formatMonth } from "@/lib/utils";
 import { EXPENSE_CATEGORIES, type Expense } from "@/types";
+
+// ─── Lazy-load the entire charts section ────────────────────────────────────
+// recharts is 84KB gzip. Deferring it means stat cards appear instantly
+// while recharts loads in the background after initial paint.
+const DashboardCharts = lazy(() => import("./DashboardCharts"));
 
 interface DashboardStats {
   todayExpenses: number;
@@ -53,16 +54,6 @@ const StatCard = memo(function StatCard({ icon: Icon, label, value, sub, color, 
   );
 });
 
-const CustomTooltip = memo(function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-card border border-border rounded-lg p-3 shadow-xl text-sm">
-      <p className="font-medium text-foreground">{label}</p>
-      <p className="text-primary font-semibold">{formatCurrency(payload[0].value)}</p>
-    </div>
-  );
-});
-
 export function Dashboard() {
   const [stats, setStats] = useState<DashboardStats>({
     todayExpenses: 0,
@@ -81,7 +72,6 @@ export function Dashboard() {
     const month = getCurrentMonth();
     const today = new Date().toISOString().split("T")[0];
 
-    // Real-time Subscriptions
     const unsubExpenses = expenseService.subscribeByMonth(month, (data) => {
       let todayTotal = 0;
       let monthTotal = 0;
@@ -98,9 +88,9 @@ export function Dashboard() {
         monthExpenses: monthTotal,
         todayExpenses: todayTotal,
         categoryTotals: catTotals,
-        recentExpenses: data.slice(0, 8) // First 8 (since query is ordered by desc)
+        recentExpenses: data.slice(0, 8)
       }));
-      setLoading(false); // First render completes when expenses arrive
+      setLoading(false);
     });
 
     const unsubStaff = staffService.subscribeAll((data) => {
@@ -112,24 +102,20 @@ export function Dashboard() {
       setStats(prev => ({ ...prev, pendingSalary: pendingTotal }));
     });
 
-    // Lighter query: only today's leaves (avoids full-month subscription)
     leaveService.getTodayCount().then((count) => {
       setStats(prev => ({ ...prev, todayLeaves: count }));
     });
 
-    // Fetch 6-month trend in parallel (not sequential) — dramatically faster
-    const fetchTrends = () => {
-      const months = getLast12Months().slice(-6);
-      Promise.all(
-        months.map(m =>
-          expenseService.getMonthTotal(m).then(amount => ({
-            month: formatMonth(m).split(" ")[0].slice(0, 3),
-            amount,
-          }))
-        )
-      ).then(monthlyTrend => setStats(prev => ({ ...prev, monthlyTrend })));
-    };
-    fetchTrends();
+    // Parallel trend fetch — deferred, doesn't block initial render
+    const months = getLast12Months().slice(-6);
+    Promise.all(
+      months.map(m =>
+        expenseService.getMonthTotal(m).then(amount => ({
+          month: formatMonth(m).split(" ")[0].slice(0, 3),
+          amount,
+        }))
+      )
+    ).then(monthlyTrend => setStats(prev => ({ ...prev, monthlyTrend })));
 
     return () => {
       unsubExpenses();
@@ -154,7 +140,7 @@ export function Dashboard() {
         <p className="text-muted-foreground text-sm mt-1">Here's your Kumar Ice Parlour business overview.</p>
       </div>
 
-      {/* Stat Cards */}
+      {/* Stat Cards — render immediately, no chart dependency */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard icon={TrendingDown} label="Today's Spend" value={formatCurrency(stats.todayExpenses)} sub="Today" color="bg-red-500" loading={loading} />
         <StatCard icon={Receipt} label="This Month" value={formatCurrency(stats.monthExpenses)} sub={formatMonth(getCurrentMonth())} color="bg-violet-500" loading={loading} />
@@ -164,140 +150,20 @@ export function Dashboard() {
         <StatCard icon={Zap} label="Alerts" value="3" sub="Need attention" color="bg-orange-500" loading={loading} />
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Monthly Trend */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2">
-              <ArrowUpRight className="h-4 w-4 text-primary" />
-              Monthly Expense Trend
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <Skeleton className="h-48 w-full" />
-            ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={stats.monthlyTrend}>
-                  <defs>
-                    <linearGradient id="colorAmt" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Area type="monotone" dataKey="amount" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorAmt)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Expenses by Category */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2">
-              <PieChart className="h-4 w-4 text-primary" />
-              Category Breakdown
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <Skeleton className="h-48 w-full" />
-            ) : pieData.length === 0 ? (
-              <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">No expenses this month</div>
-            ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<CustomTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Recent Activity Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Recent Expenses */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-primary" />
-              Recent Expenses
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
-              </div>
-            ) : stats.recentExpenses.length === 0 ? (
-              <EmptyState icon="💸" title="No recent expenses" description="You haven't recorded any expenses yet." />
-            ) : (
-              <div className="space-y-3">
-                {stats.recentExpenses.map((exp) => {
-                  const cat = EXPENSE_CATEGORIES.find((c) => c.value === exp.category) || EXPENSE_CATEGORIES[0];
-                  return (
-                    <div key={exp.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors border border-transparent hover:border-border">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ backgroundColor: `${cat.color}20` }}>
-                        {cat.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-foreground truncate">{exp.title}</p>
-                        <p className="text-xs text-muted-foreground">{cat.label} · {formatDate(exp.date)}</p>
-                      </div>
-                      <p className="text-sm font-bold text-red-400 shrink-0">
-                        -{formatCurrency(exp.amount)}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Quick Actions & Alerts */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-primary" />
-              Alerts & Quick Actions
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {stats.pendingSalary > 0 && (
-                <div className="flex items-center justify-between p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400">
-                  <div className="flex items-center gap-2">
-                    <IndianRupee className="h-4 w-4" />
-                    <p className="text-sm font-medium">Pending salaries to clear</p>
-                  </div>
-                  <Badge variant="warning" className="bg-amber-500">{formatCurrency(stats.pendingSalary)}</Badge>
-                </div>
-              )}
-              {stats.todayLeaves > 0 && (
-                <div className="flex items-center justify-between p-3 rounded-lg border border-pink-500/30 bg-pink-500/10 text-pink-700 dark:text-pink-400">
-                  <div className="flex items-center gap-2">
-                    <CalendarOff className="h-4 w-4" />
-                    <p className="text-sm font-medium">Staff on leave today</p>
-                  </div>
-                  <Badge className="bg-pink-500 hover:bg-pink-600">{stats.todayLeaves} Staff</Badge>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Charts + Activity — lazy loaded after stat cards paint */}
+      <Suspense fallback={
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Skeleton className="h-64 rounded-xl lg:col-span-2" />
+          <Skeleton className="h-64 rounded-xl" />
+        </div>
+      }>
+        <DashboardCharts
+          stats={stats}
+          loading={loading}
+          pieData={pieData}
+          EXPENSE_CATEGORIES={EXPENSE_CATEGORIES}
+        />
+      </Suspense>
     </div>
   );
 }

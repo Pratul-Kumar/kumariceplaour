@@ -13,7 +13,7 @@ import { useToast } from "@/components/ui/toast";
 import { expenseService, staffService } from "@/services";
 import { EXPENSE_CATEGORIES, getCategoryInfo, type Expense, type ExpenseCategory, type Staff } from "@/types";
 import { formatCurrency, formatDate, getCurrentMonth } from "@/lib/utils";
-import * as XLSX from "xlsx";
+// XLSX loaded dynamically on export click (saves 208KB gzip on initial load)
 
 const expenseSchema = z.object({
   title: z.string().min(2, "Title required"),
@@ -127,7 +127,7 @@ export function ExpenseManagement() {
     toast({ type: "success", title: "Expense Deleted" });
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     const data = filtered.map((e) => ({
       Title: e.title,
       Amount: e.amount,
@@ -135,6 +135,7 @@ export function ExpenseManagement() {
       Date: formatDate(e.date),
       Note: e.note || "",
     }));
+    const XLSX = await import("xlsx");
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Expenses");
