@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { LayoutDashboard, Users, Receipt, IndianRupee, CalendarOff,
   HardHat, Settings, X, Menu, TrendingUp, Bell, Sun, Moon, ClipboardCheck, LogOut, Cloud, CloudOff
@@ -28,8 +28,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { user } = useAuthStore();
 
-  const currentPage = NAV_ITEMS.find((n) => n.to === location.pathname)?.label || "Dashboard";
+  const currentPage = useMemo(
+    () => NAV_ITEMS.find((n) => n.to === location.pathname)?.label || "Dashboard",
+    [location.pathname]
+  );
   const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+
+  // Pre-compute the date string once per day (changes at midnight via memo)
+  const dateStr = useMemo(
+    () => new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [] // computed once on mount; date won't change during a session
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -150,7 +160,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div>
               <h2 className="text-base font-semibold text-foreground">{currentPage}</h2>
               <p className="text-xs text-muted-foreground hidden sm:block">
-                {new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                {dateStr}
               </p>
             </div>
           </div>

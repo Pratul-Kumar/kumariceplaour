@@ -112,9 +112,9 @@ export function Dashboard() {
       setStats(prev => ({ ...prev, pendingSalary: pendingTotal }));
     });
 
-    const unsubLeaves = leaveService.subscribeByMonth(month, (data) => {
-      const todayCount = data.filter(l => l.leaveDate === today).length;
-      setStats(prev => ({ ...prev, todayLeaves: todayCount }));
+    // Lighter query: only today's leaves (avoids full-month subscription)
+    leaveService.getTodayCount().then((count) => {
+      setStats(prev => ({ ...prev, todayLeaves: count }));
     });
 
     // Background task: Historical trends (doesn't block main render)
@@ -134,7 +134,6 @@ export function Dashboard() {
       unsubExpenses();
       unsubStaff();
       unsubSalary();
-      unsubLeaves();
     };
   }, []);
 

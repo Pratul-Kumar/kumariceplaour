@@ -1,11 +1,11 @@
-import { useEffect, lazy, Suspense } from "react";
+import { useEffect, useRef, lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { ToastProvider } from "@/components/ui/toast";
 import { useAuthStore } from "@/store/useAuthStore";
 import { Loader2 } from "lucide-react";
 
-// Lazy-load page components
+// Lazy-load page components for code splitting
 const Login = lazy(() => import("@/pages/Login").then(m => ({ default: m.Login })));
 const Dashboard = lazy(() => import("@/pages/Dashboard").then(m => ({ default: m.Dashboard })));
 const StaffManagement = lazy(() => import("@/pages/StaffManagement").then(m => ({ default: m.StaffManagement })));
@@ -17,45 +17,42 @@ const LeaveManagement = lazy(() => import("@/pages/LeaveManagement").then(m => (
 const Analytics = lazy(() => import("@/pages/Analytics").then(m => ({ default: m.Analytics })));
 const Settings = lazy(() => import("@/pages/Settings").then(m => ({ default: m.Settings })));
 
+const FullPageLoader = ({ message = "Connecting to Cloud..." }: { message?: string }) => (
+  <div className="h-screen w-full flex items-center justify-center bg-background">
+    <div className="flex flex-col items-center gap-3">
+      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center shadow-lg text-2xl">
+        🍦
+      </div>
+      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      <p className="text-sm text-muted-foreground font-medium">{message}</p>
+    </div>
+  </div>
+);
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore();
   
-  if (loading) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-2">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-slate-500 font-medium">Connecting to Cloud...</p>
-        </div>
-      </div>
-    );
-  }
-  
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
+  if (loading) return <FullPageLoader />;
+  if (!user) return <Navigate to="/login" replace />;
 
   return <>{children}</>;
 }
 
 export function App() {
   const { initializeAuth } = useAuthStore();
+  const initialized = useRef(false);
 
   useEffect(() => {
-    initializeAuth();
-  }, [initializeAuth]);
+    if (!initialized.current) {
+      initialized.current = true;
+      initializeAuth();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <ToastProvider>
       <BrowserRouter>
-        <Suspense fallback={
-          <div className="h-screen w-full flex items-center justify-center bg-slate-50">
-            <div className="flex flex-col items-center gap-2">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm text-slate-500 font-medium">Connecting to Cloud...</p>
-            </div>
-          </div>
-        }>
+        <Suspense fallback={<FullPageLoader />}>
           <Routes>
             <Route path="/login" element={<Login />} />
             
@@ -65,8 +62,8 @@ export function App() {
                   <Suspense fallback={
                     <div className="h-[50vh] w-full flex items-center justify-center">
                       <div className="flex flex-col items-center gap-2">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        <p className="text-sm text-slate-500 font-medium">Loading page...</p>
+                        <Loader2 className="h-7 w-7 animate-spin text-primary" />
+                        <p className="text-sm text-muted-foreground font-medium">Loading page...</p>
                       </div>
                     </div>
                   }>
@@ -80,6 +77,10 @@ export function App() {
                       <Route path="/leaves" element={<LeaveManagement />} />
                       <Route path="/analytics" element={<Analytics />} />
                       <Route path="/settings" element={<Settings />} />
+                      {/* Redirect temp-staff to staff (was causing 404 from nav) */}
+                      <Route path="/temp-staff" element={<Navigate to="/staff" replace />} />
+                      {/* Catch-all: redirect unknown paths to dashboard */}
+                      <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                   </Suspense>
                 </Layout>

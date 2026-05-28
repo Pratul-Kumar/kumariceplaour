@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* Font loaded via index.html <link> tag for optimal preconnect performance */
 
 @tailwind base;
 @tailwind components;
@@ -183,19 +183,11 @@
 }
 
 /* ============================================================
-   PWA INSTALL PROMPT
+   PERFORMANCE UTILITIES
    ============================================================ */
-#pwa-install-toast {
-  position: fixed;
-  bottom: 80px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 999;
-  white-space: nowrap;
-}
-
-@media (min-width: 1024px) {
-  #pwa-install-toast {
-    bottom: 20px;
-  }
+/* GPU-accelerated transitions for common interactive elements */
+.transition-all,
+.transition-colors,
+.transition-transform {
+  will-change: auto;
 }
