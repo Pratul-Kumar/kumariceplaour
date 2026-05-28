@@ -94,6 +94,21 @@ export interface SalaryPayment {
 }
 
 // ============================================================
+// ADVANCE RECORD
+// ============================================================
+export interface AdvanceRecord {
+  id?: string;
+  staffId: string;
+  amount: number;
+  date: string;
+  month: string; // YYYY-MM
+  reason?: string;
+  status: "pending" | "deducted"; // when salary is generated, it marks these as deducted
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ============================================================
 // LEAVE RECORD
 // ============================================================
 export type LeaveType = "casual" | "paid" | "unpaid" | "sick";
@@ -199,6 +214,7 @@ export interface SalaryCalculationResult {
   leaveDeductionAmount: number;
   overtimeAmount: number;
   finalSalary: number;
+  remainingDue: number;
   breakdown: string[];
 }
 
@@ -231,6 +247,7 @@ export function calculateSalary(input: SalaryCalculationInput): SalaryCalculatio
     const overtimeAmount = totalOvertimeHours * overtimeRate;
 
     finalSalary = staff.monthlySalary - leaveDeductionAmount - absentDeduction - halfDayDeduction + overtimeAmount + bonus - advance - extraDeduction;
+    const remainingDue = finalSalary;
 
     breakdown.push(`Base: ₹${staff.monthlySalary.toLocaleString()}`);
     if (absentDeduction > 0) breakdown.push(`Absent (${absentDays}d): -₹${absentDeduction.toFixed(0)}`);
@@ -241,13 +258,14 @@ export function calculateSalary(input: SalaryCalculationInput): SalaryCalculatio
     if (advance > 0) breakdown.push(`Advance: -₹${advance}`);
     if (extraDeduction > 0) breakdown.push(`Extra Deduction: -₹${extraDeduction}`);
 
-    return { presentDays, absentDays, leaveDays, halfDays, totalOvertimeHours, deductedLeaves, leaveDeductionAmount, overtimeAmount: totalOvertimeHours * overtimeRate, finalSalary: Math.max(0, finalSalary), breakdown };
+    return { presentDays, absentDays, leaveDays, halfDays, totalOvertimeHours, deductedLeaves, leaveDeductionAmount, overtimeAmount: totalOvertimeHours * overtimeRate, finalSalary, remainingDue, breakdown };
   } else {
     // Daily wage
     const perDaySalary = staff.dailyWage;
     const overtimeRate = input.overtimeRatePerHour ?? perDaySalary / 8;
     const overtimeAmount = totalOvertimeHours * overtimeRate;
     finalSalary = presentDays * perDaySalary + overtimeAmount + bonus - advance - extraDeduction;
+    const remainingDue = finalSalary;
 
     breakdown.push(`Days Present (${presentDays}): ₹${(presentDays * perDaySalary).toFixed(0)}`);
     if (overtimeAmount > 0) breakdown.push(`Overtime (${totalOvertimeHours}h): +₹${overtimeAmount.toFixed(0)}`);
@@ -255,6 +273,6 @@ export function calculateSalary(input: SalaryCalculationInput): SalaryCalculatio
     if (advance > 0) breakdown.push(`Advance: -₹${advance}`);
     if (extraDeduction > 0) breakdown.push(`Extra Deduction: -₹${extraDeduction}`);
 
-    return { presentDays, absentDays, leaveDays, halfDays, totalOvertimeHours, deductedLeaves: 0, leaveDeductionAmount: 0, overtimeAmount, finalSalary: Math.max(0, finalSalary), breakdown };
+    return { presentDays, absentDays, leaveDays, halfDays, totalOvertimeHours, deductedLeaves: 0, leaveDeductionAmount: 0, overtimeAmount, finalSalary, remainingDue, breakdown };
   }
 }

@@ -72,9 +72,11 @@ function SalaryCard({
 
   const statusColor = record.status === "paid"
     ? "success"
-    : record.status === "partial"
-      ? "warning"
-      : "destructive";
+    : record.remainingDue < 0 
+      ? "destructive"
+      : record.status === "partial"
+        ? "warning"
+        : "destructive";
 
   const methodInfo = (m: string) => PAY_METHOD_ICONS[m] || PAY_METHOD_ICONS.other;
 
@@ -146,11 +148,11 @@ function SalaryCard({
               <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(record.totalPaid)}</p>
             </div>
             <div className={`rounded-xl p-3 ${record.remainingDue > 0 ? "bg-red-500/10 border border-red-500/20" : "bg-emerald-500/10"}`}>
-              <p className={`text-[10px] uppercase tracking-wide mb-0.5 ${record.remainingDue > 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`}>
-                {record.remainingDue > 0 ? "Remaining" : "Settled"}
+              <p className={`text-[10px] uppercase font-bold tracking-wider ${record.remainingDue > 0 ? "text-muted-foreground" : record.remainingDue < 0 ? "text-orange-500/80" : "text-emerald-600/70"}`}>
+                {record.remainingDue > 0 ? "Remaining" : record.remainingDue < 0 ? "Owes Company" : "Settled"}
               </p>
-              <p className={`text-sm font-bold ${record.remainingDue > 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`}>
-                {formatCurrency(record.remainingDue)}
+              <p className={`text-sm font-bold ${record.remainingDue > 0 ? "text-red-500" : record.remainingDue < 0 ? "text-orange-600" : "text-emerald-600"}`}>
+                {record.remainingDue < 0 ? "-" : ""}{formatCurrency(Math.abs(record.remainingDue))}
               </p>
             </div>
           </div>

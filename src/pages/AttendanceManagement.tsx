@@ -341,7 +341,7 @@ export function AttendanceManagement() {
               
               <div className="md:hidden space-y-4">
                 {/* Employee Selection Dropdown */}
-                <div className="relative">
+                <div className="relative z-20">
                   <select
                     value={selectedStaffId}
                     onChange={(e) => setSelectedStaffId(e.target.value)}
@@ -406,7 +406,7 @@ export function AttendanceManagement() {
                               <button
                                 onClick={() => handleCellClick(selectedStaffId, date, status)}
                                 className={cn(
-                                  "relative flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full transition-all active:scale-90 touch-manipulation select-none",
+                                  "relative z-10 flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full transition-all active:scale-90 touch-manipulation select-none",
                                   cfg
                                     ? `${cfg.bg} ${cfg.text} shadow-sm`
                                     : isToday

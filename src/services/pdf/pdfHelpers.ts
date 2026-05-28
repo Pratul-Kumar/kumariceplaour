@@ -2,11 +2,13 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
+import { LOGO_BASE64 } from "../../lib/logoBase64";
+
 export const SHOP_DETAILS = {
-  name: "Kumar Ice Parlour",
-  address: "123 Main Street, City Center, State, 123456",
-  phone: "+91 9876543210",
-  gst: "22AAAAA0000A1Z5", // Optional
+  name: "Kumar's Ice Parlour",
+  address: "Nagar Palika Chowk, Chapra",
+  phone: "+91 70040 13495",
+  gst: "", // Optional
 };
 
 export function createPDFDocument(title: string, orientation: "p" | "l" = "p") {
@@ -20,30 +22,35 @@ export function drawHeader(doc: jsPDF, title: string) {
   
   // Background for header
   doc.setFillColor(255, 240, 245); // Light pink background
-  doc.rect(0, 0, pageWidth, 40, "F");
+  doc.rect(0, 0, pageWidth, 60, "F");
 
-  // Shop Name
+  // Logo
+  const logoWidth = 24;
+  const logoHeight = 24;
+  doc.addImage(LOGO_BASE64, "PNG", pageWidth / 2 - logoWidth / 2, 4, logoWidth, logoHeight);
+
+  // Shop Name (Moved down to accommodate logo)
   doc.setFont("helvetica", "bold");
   doc.setFontSize(22);
   doc.setTextColor(225, 29, 72); // Rose 600
-  doc.text(SHOP_DETAILS.name, pageWidth / 2, 15, { align: "center" });
+  doc.text(SHOP_DETAILS.name, pageWidth / 2, 34, { align: "center" });
 
   // Shop Details
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(71, 85, 105); // Slate 600
-  doc.text(`${SHOP_DETAILS.address} | Ph: ${SHOP_DETAILS.phone}`, pageWidth / 2, 22, { align: "center" });
+  doc.text(`${SHOP_DETAILS.address} | Ph: ${SHOP_DETAILS.phone}`, pageWidth / 2, 41, { align: "center" });
   if (SHOP_DETAILS.gst) {
-    doc.text(`GST: ${SHOP_DETAILS.gst}`, pageWidth / 2, 28, { align: "center" });
+    doc.text(`GST: ${SHOP_DETAILS.gst}`, pageWidth / 2, 47, { align: "center" });
   }
 
   // Document Title
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
   doc.setTextColor(15, 23, 42); // Slate 900
-  doc.text(title.toUpperCase(), pageWidth / 2, 36, { align: "center" });
+  doc.text(title.toUpperCase(), pageWidth / 2, 54, { align: "center" });
 
-  return 45; // Return current Y position
+  return 60; // Return current Y position
 }
 
 export function drawFooter(doc: jsPDF) {

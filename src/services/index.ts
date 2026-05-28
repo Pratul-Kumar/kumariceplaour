@@ -3,7 +3,7 @@ import {
   query, where, orderBy, onSnapshot, limit, runTransaction, getDoc
 } from "firebase/firestore";
 import { db } from "@/firebase/config";
-import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, LeaveRecord } from "@/types";
+import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, LeaveRecord, AdvanceRecord } from "@/types";
 
 const mapDoc = <T>(d: any): T => ({ id: d.id, ...d.data() } as T);
 
