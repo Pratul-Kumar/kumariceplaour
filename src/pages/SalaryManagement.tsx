@@ -4,8 +4,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Plus, Trash2, FileText, Download, HandCoins,
-  Calculator, ChevronDown, ChevronUp, AlertCircle,
-  Clock, CheckCircle2, IndianRupee, Banknote, Smartphone, Building2
+  Calculator, ChevronDown, ChevronUp,
+  IndianRupee, Banknote, Smartphone, Building2, FileDown
 } from "lucide-react";
 import { Button, Input, Card, CardContent, Badge, EmptyState, Spinner, Skeleton } from "@/components/ui";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
@@ -477,6 +477,20 @@ export function SalaryManagement() {
     generatePaymentReceipt(staff, record, payment);
   };
 
+  const downloadMonthlyReport = async () => {
+    if (records.length === 0) {
+      toast({ type: "error", title: "No records", description: "Generate salary records first." });
+      return;
+    }
+    try {
+      const { generateMonthlySalaryReport } = await import("@/services/pdf/generateMonthlySalaryReport");
+      generateMonthlySalaryReport(filterMonth, records, staffList);
+      toast({ type: "success", title: "Report exported", description: `${formatMonth(filterMonth)} salary report downloaded.` });
+    } catch (e: any) {
+      toast({ type: "error", title: "Export failed", description: e?.message || "Try again." });
+    }
+  };
+
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5 pb-24 lg:pb-6">
@@ -487,11 +501,22 @@ export function SalaryManagement() {
           <h1 className="text-xl font-bold text-foreground">Salary Ledger</h1>
           <p className="text-sm text-muted-foreground">{records.length} records · {formatMonth(filterMonth)}</p>
         </div>
-        <Button onClick={openGenerate} className="gap-2 shrink-0">
-          <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">Generate</span>
-          <span className="sm:hidden">New</span>
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            onClick={downloadMonthlyReport}
+            className="gap-2 h-9 px-3 text-sm"
+            title="Export monthly salary report as PDF"
+          >
+            <FileDown className="h-4 w-4" />
+            <span className="hidden sm:inline">Export PDF</span>
+          </Button>
+          <Button onClick={openGenerate} className="gap-2">
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Generate</span>
+            <span className="sm:hidden">New</span>
+          </Button>
+        </div>
       </div>
 
       {/* Month filter */}

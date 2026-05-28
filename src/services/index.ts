@@ -95,15 +95,15 @@ export const attendanceService = {
   },
 
   getByStaffAndMonth: async (staffId: string, month: string) => {
+    // Only filter by date range on a single field — no composite index required.
+    // staffId is filtered client-side to avoid needing a (staffId + date) composite index.
     const q = query(
       attendanceCol,
-      where("staffId", "==", staffId),
       where("date", ">=", `${month}-01`),
       where("date", "<=", `${month}-31`)
     );
-    // Use plain getDocs — works with both Firestore cache and network
     const snap = await getDocs(q);
-    return snap.docs.map(mapDoc<Attendance>);
+    return snap.docs.map(mapDoc<Attendance>).filter(a => a.staffId === staffId);
   },
 
   upsert: async (data: Omit<Attendance, "id" | "createdAt" | "updatedAt">) => {
