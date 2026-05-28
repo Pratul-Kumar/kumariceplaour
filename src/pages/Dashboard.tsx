@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, memo, useMemo } from "react";
 import {
   TrendingDown, Users, CalendarOff, Clock, ArrowUpRight,
   IndianRupee, Receipt, Zap, AlertCircle
@@ -25,7 +25,7 @@ interface DashboardStats {
 
 const CHART_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#f97316", "#ec4899", "#8b5cf6", "#64748b"];
 
-function StatCard({ icon: Icon, label, value, sub, color, loading }: {
+const StatCard = memo(function StatCard({ icon: Icon, label, value, sub, color, loading }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   value: string;
@@ -51,9 +51,9 @@ function StatCard({ icon: Icon, label, value, sub, color, loading }: {
       </CardContent>
     </Card>
   );
-}
+});
 
-const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) => {
+const CustomTooltip = memo(function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-card border border-border rounded-lg p-3 shadow-xl text-sm">
@@ -61,7 +61,7 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
       <p className="text-primary font-semibold">{formatCurrency(payload[0].value)}</p>
     </div>
   );
-};
+});
 
 export function Dashboard() {
   const [stats, setStats] = useState<DashboardStats>({
@@ -117,16 +117,17 @@ export function Dashboard() {
       setStats(prev => ({ ...prev, todayLeaves: count }));
     });
 
-    // Background task: Historical trends (doesn't block main render)
-    const fetchTrends = async () => {
+    // Fetch 6-month trend in parallel (not sequential) — dramatically faster
+    const fetchTrends = () => {
       const months = getLast12Months().slice(-6);
-      const monthlyTrend = await Promise.all(
-        months.map(async (m) => ({
-          month: formatMonth(m).split(" ")[0].slice(0, 3),
-          amount: await expenseService.getMonthTotal(m),
-        }))
-      );
-      setStats(prev => ({ ...prev, monthlyTrend }));
+      Promise.all(
+        months.map(m =>
+          expenseService.getMonthTotal(m).then(amount => ({
+            month: formatMonth(m).split(" ")[0].slice(0, 3),
+            amount,
+          }))
+        )
+      ).then(monthlyTrend => setStats(prev => ({ ...prev, monthlyTrend })));
     };
     fetchTrends();
 
@@ -137,10 +138,13 @@ export function Dashboard() {
     };
   }, []);
 
-  const pieData = Object.entries(stats.categoryTotals).map(([cat, amt]) => {
-    const info = EXPENSE_CATEGORIES.find((c) => c.value === cat);
-    return { name: info?.label || cat, value: amt, color: info?.color || "#64748b" };
-  });
+  const pieData = useMemo(() =>
+    Object.entries(stats.categoryTotals).map(([cat, amt]) => {
+      const info = EXPENSE_CATEGORIES.find((c) => c.value === cat);
+      return { name: info?.label || cat, value: amt, color: info?.color || "#64748b" };
+    }),
+    [stats.categoryTotals]
+  );
 
   return (
     <div className="space-y-6 pb-20 lg:pb-6">
