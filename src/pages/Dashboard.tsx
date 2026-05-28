@@ -102,27 +102,50 @@ export function Dashboard() {
       setStats(prev => ({ ...prev, pendingSalary: pendingTotal }));
     });
 
-    leaveService.getTodayCount().then((count) => {
-      setStats(prev => ({ ...prev, todayLeaves: count }));
+    // Today's leave count — live listener so it updates cross-device
+    const unsubLeaves = leaveService.subscribeByDate(today, (leaves) => {
+      setStats(prev => ({ ...prev, todayLeaves: leaves.length }));
     });
 
-    // Parallel trend fetch — deferred, doesn't block initial render
+    // Monthly trend — updated whenever current month snapshot fires
+    // For past 5 months: use getDocs (historical, stable data)
     const months = getLast12Months().slice(-6);
+    const historicalMonths = months.slice(0, 5); // all except current
     Promise.all(
-      months.map(m =>
+      historicalMonths.map(m =>
         expenseService.getMonthTotal(m).then(amount => ({
           month: formatMonth(m).split(" ")[0].slice(0, 3),
           amount,
+          key: m,
         }))
       )
-    ).then(monthlyTrend => setStats(prev => ({ ...prev, monthlyTrend })));
+    ).then(historical => {
+      setStats(prev => ({
+        ...prev,
+        monthlyTrend: historical.map(h => ({ month: h.month, amount: h.amount })),
+      }));
+    });
 
     return () => {
       unsubExpenses();
       unsubStaff();
       unsubSalary();
+      unsubLeaves();
     };
   }, []);
+
+  // Keep monthly trend current month in sync with live expense data
+  useEffect(() => {
+    const currentMonthShort = formatMonth(getCurrentMonth()).split(" ")[0].slice(0, 3);
+    setStats(prev => ({
+      ...prev,
+      monthlyTrend: prev.monthlyTrend.map((t, i) =>
+        i === prev.monthlyTrend.length - 1
+          ? { ...t, month: currentMonthShort, amount: prev.monthExpenses }
+          : t
+      ),
+    }));
+  }, [stats.monthExpenses]);
 
   const pieData = useMemo(() =>
     Object.entries(stats.categoryTotals).map(([cat, amt]) => {

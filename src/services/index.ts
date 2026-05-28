@@ -336,6 +336,12 @@ export const leaveService = {
     return onSnapshot(q, s => { const data = s.docs.map(mapDoc<LeaveRecord>); leaveCache.set(month, data); cb(data); });
   },
 
+  /** Live listener for all leaves on a specific date — used by Dashboard */
+  subscribeByDate: (date: string, cb: (d: LeaveRecord[]) => void) => {
+    const q = query(leavesCol, where("leaveDate", "==", date));
+    return onSnapshot(q, s => cb(s.docs.map(mapDoc<LeaveRecord>)));
+  },
+
   getTodayCount: async () => {
     const today = new Date().toISOString().split("T")[0];
     const snap = await getDocs(query(leavesCol, where("leaveDate", "==", today)));
