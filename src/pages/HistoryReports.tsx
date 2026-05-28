@@ -53,9 +53,9 @@ export function HistoryReports() {
         csv += `${getStaffName(s.staffId)},${s.month},${s.year},${s.baseSalary},${s.advance},${s.totalPaid},${s.remainingDue},${s.status}\n`;
       });
     } else if (activeTab === "advances") {
-      csv = "Staff,Date,Amount,Status,Method,Note\n";
+      csv = "Staff,Date,Amount,Status,Reason\n";
       advances.filter(a => filterStaff === "all" || a.staffId === filterStaff).forEach(a => {
-        csv += `${getStaffName(a.staffId)},${a.date},${a.amount},${a.status},${a.paymentMethod},${a.note || ""}\n`;
+        csv += `${getStaffName(a.staffId)},${a.date},${a.amount},${a.status},${a.reason || ""}\n`;
       });
     }
     
@@ -183,7 +183,7 @@ export function HistoryReports() {
                     <div key={a.id} className="flex justify-between items-center p-3 sm:p-4 rounded-xl border border-border bg-muted/30">
                       <div>
                         <p className="font-semibold">{getStaffName(a.staffId)}</p>
-                        <p className="text-xs text-muted-foreground">{formatDate(a.date)} • {a.paymentMethod}</p>
+                        <p className="text-xs text-muted-foreground">{formatDate(a.date)} {a.reason ? `• ${a.reason}` : ""}</p>
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-destructive">{formatCurrency(a.amount)}</p>

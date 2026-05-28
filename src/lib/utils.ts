@@ -10,7 +10,8 @@ export function formatCurrency(amount: number, symbol = "₹") {
   return `${symbol}${amount.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
-export function formatDate(dateStr: string, fmt = "dd MMM yyyy") {
+export function formatDate(dateStr?: string, fmt = "dd MMM yyyy") {
+  if (!dateStr) return "N/A";
   try {
     return format(parseISO(dateStr), fmt);
   } catch {
@@ -18,7 +19,8 @@ export function formatDate(dateStr: string, fmt = "dd MMM yyyy") {
   }
 }
 
-export function formatMonth(monthStr: string) {
+export function formatMonth(monthStr?: string) {
+  if (!monthStr) return "N/A";
   try {
     return format(parseISO(`${monthStr}-01`), "MMMM yyyy");
   } catch {

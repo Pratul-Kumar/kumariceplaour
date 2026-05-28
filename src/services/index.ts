@@ -3,7 +3,7 @@ import {
   query, where, orderBy, onSnapshot, limit, runTransaction, getDoc
 } from "firebase/firestore";
 import { db } from "@/firebase/config";
-import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, LeaveRecord, AdvanceRecord } from "@/types";
+import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, LeaveRecord, AdvanceRecord, AppSettings } from "@/types";
 
 const mapDoc = <T>(d: any): T => ({ id: d.id, ...d.data() } as T);
 
@@ -280,6 +280,12 @@ export const salaryService = {
   getPending: async () => {
     const s = await getDocs(query(salaryCol, where("status", "!=", "paid")));
     return s.docs.map(mapDoc<SalaryRecord>);
+  },
+
+  getByMonth: async (month: number, year: number): Promise<SalaryRecord[]> => {
+    const q = query(salaryCol, where("month", "==", month), where("year", "==", year));
+    const snap = await getDocs(q);
+    return snap.docs.map(mapDoc<SalaryRecord>);
   },
 
   /** Get all salary records for a staff member — sorted client-side */
