@@ -108,15 +108,20 @@ export function ExpenseManagement() {
     try {
       const now = new Date().toISOString();
       if (editItem?.id) {
-        await expenseService.update(editItem.id, data);
+        const payload: any = { ...data };
+        if (!payload.staffId) delete payload.staffId;
+        await expenseService.update(editItem.id, payload);
         toast({ type: "success", title: "Expense Updated" });
       } else {
-        await expenseService.add({ ...data, staffId: data.staffId || undefined, date: data.date });
+        const payload: any = { ...data, date: data.date };
+        if (!payload.staffId) delete payload.staffId;
+        await expenseService.add(payload);
         toast({ type: "success", title: "Expense Added", description: `${formatCurrency(data.amount)} recorded.` });
       }
       setModalOpen(false);
-    } catch {
-      toast({ type: "error", title: "Error saving expense" });
+    } catch (err: any) {
+      console.error("[ExpenseManagement.onSubmit]", err);
+      toast({ type: "error", title: "Error saving expense", description: err.message || "Try again." });
     } finally {
       setSaving(false);
     }

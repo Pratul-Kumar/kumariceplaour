@@ -107,17 +107,19 @@ export const attendanceService = {
   },
 
   upsert: async (data: Omit<Attendance, "id" | "createdAt" | "updatedAt">) => {
-    const q = query(attendanceCol, where("staffId", "==", data.staffId), where("date", "==", data.date));
+    const q = query(attendanceCol, where("date", "==", data.date));
     const snap = await getDocs(q);
+    const existing = snap.docs.find(d => d.data().staffId === data.staffId);
     const now = new Date().toISOString();
-    if (!snap.empty) return updateDoc(doc(db, "attendance", snap.docs[0].id), { ...data, updatedAt: now });
+    if (existing) return updateDoc(doc(db, "attendance", existing.id), { ...data, updatedAt: now });
     return addDoc(attendanceCol, { ...data, createdAt: now, updatedAt: now });
   },
 
   deleteRecord: async (staffId: string, date: string) => {
-    const q = query(attendanceCol, where("staffId", "==", staffId), where("date", "==", date));
+    const q = query(attendanceCol, where("date", "==", date));
     const snap = await getDocs(q);
-    if (!snap.empty) return deleteDoc(doc(db, "attendance", snap.docs[0].id));
+    const existing = snap.docs.find(d => d.data().staffId === staffId);
+    if (existing) return deleteDoc(doc(db, "attendance", existing.id));
   },
 
   getTodaySummary: async () => {
@@ -146,7 +148,6 @@ export const expenseService = {
     return onSnapshot(q,
       snap => {
         const data = snap.docs.map(mapDoc<Expense>);
-        // Sort client-side descending — no orderBy = no composite index
         data.sort((a, b) => b.date.localeCompare(a.date));
         let total = 0;
         const cats: Record<string, number> = {};

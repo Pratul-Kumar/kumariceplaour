@@ -165,8 +165,8 @@ export function AttendanceManagement() {
     try {
       if (nextStatus === "clear") await attendanceService.deleteRecord(staffId, date);
       else await attendanceService.upsert({ staffId, date, status: nextStatus, overtimeHours: 0 });
-    } catch {
-      toast({ type: "error", title: "Sync Error", description: "Failed to update attendance." });
+    } catch (err: any) {
+      toast({ type: "error", title: "Sync Error", description: err.message || "Failed to update attendance." });
     }
   }, [toast]);
 
@@ -174,8 +174,9 @@ export function AttendanceManagement() {
     try {
       if (status === "clear") await attendanceService.deleteRecord(staffId, date);
       else await attendanceService.upsert({ staffId, date, status, overtimeHours: 0 });
-    } catch {
-      toast({ type: "error", title: "Sync Error", description: "Failed to update attendance." });
+    } catch (err: any) {
+      console.error("[setExactStatus]", err);
+      toast({ type: "error", title: "Sync Error", description: err.message || "Failed to update attendance." });
     }
   }, [toast]);
 
