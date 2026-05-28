@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { LayoutDashboard, Users, Receipt, IndianRupee, CalendarOff,
-  HardHat, Settings, X, Menu, TrendingUp, Bell, Sun, Moon, ClipboardCheck, LogOut, Cloud, CloudOff
+  HardHat, Settings, X, Menu, TrendingUp, Bell, Sun, Moon, ClipboardCheck, LogOut, Cloud, CloudOff, History
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/useTheme";
@@ -17,8 +17,8 @@ const NAV_ITEMS = [
   { to: "/expenses",  icon: Receipt,         label: "Expenses" },
   { to: "/salary",    icon: IndianRupee,     label: "Salary" },
   { to: "/leaves",    icon: CalendarOff,     label: "Leaves" },
-  { to: "/temp-staff",icon: HardHat,         label: "Temp Staff" },
   { to: "/analytics", icon: TrendingUp,      label: "Analytics" },
+  { to: "/history",   icon: History,         label: "History" },
   { to: "/settings",  icon: Settings,        label: "Settings" },
 ];
 

@@ -2,7 +2,7 @@
 // STAFF
 // ============================================================
 export type SalaryType = "monthly" | "daily";
-export type StaffRole = "manager" | "cashier" | "worker" | "delivery" | "security" | "cleaner" | "other";
+export type StaffRole = string;
 export type StaffStatus = "active" | "inactive";
 
 export interface Staff {
@@ -13,7 +13,7 @@ export interface Staff {
   salaryType: SalaryType;
   monthlySalary: number;
   dailyWage: number;
-  joiningDate: string;
+  joiningDate?: string;
   allowedCasualLeavesPerMonth: number;
   leaveCount: number;
   status: StaffStatus;
@@ -163,14 +163,13 @@ export const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string; color:
   { value: "miscellaneous", label: "Miscellaneous", color: "#64748b", icon: "🔀" },
 ];
 
-export const STAFF_ROLES: { value: StaffRole; label: string }[] = [
+export const STAFF_ROLES: { value: string; label: string }[] = [
   { value: "manager",  label: "Manager" },
   { value: "cashier",  label: "Cashier" },
   { value: "worker",   label: "Worker" },
   { value: "delivery", label: "Delivery" },
   { value: "security", label: "Security" },
   { value: "cleaner",  label: "Cleaner" },
-  { value: "other",    label: "Other" },
 ];
 
 export const LEAVE_TYPES: { value: LeaveType; label: string }[] = [

@@ -65,6 +65,20 @@ export function StaffProfile() {
   const presentDays = currentMonthAtt.filter((a) => a.status === "present").length;
   const absentDays = currentMonthAtt.filter((a) => a.status === "absent").length;
   const halfDays = currentMonthAtt.filter((a) => a.status === "half_day").length;
+  const totalDays = presentDays + absentDays + halfDays;
+  const attendanceRate = totalDays > 0 ? Math.round(((presentDays + halfDays * 0.5) / totalDays) * 100) : 0;
+
+  const calculateTenure = (joiningDate?: string) => {
+    if (!joiningDate) return "N/A";
+    const start = new Date(joiningDate);
+    const now = new Date();
+    const months = (now.getFullYear() - start.getFullYear()) * 12 + now.getMonth() - start.getMonth();
+    const years = Math.floor(months / 12);
+    const remMonths = months % 12;
+    if (years === 0 && remMonths === 0) return "Just Joined";
+    if (years === 0) return `${remMonths} months`;
+    return `${years} yrs ${remMonths > 0 ? `${remMonths} mos` : ''}`;
+  };
 
   return (
     <div className="space-y-5 pb-20 lg:pb-6">
@@ -110,7 +124,22 @@ export function StaffProfile() {
             </div>
             <div className="bg-muted/50 rounded-xl p-3 text-center">
               <p className="text-xs text-muted-foreground">Joined</p>
-              <p className="text-sm font-bold text-foreground mt-1">{formatDate(staff.joiningDate)}</p>
+              <p className="text-sm font-bold text-foreground mt-1">{staff.joiningDate ? formatDate(staff.joiningDate) : "N/A"}</p>
+              <p className="text-xs text-muted-foreground">{calculateTenure(staff.joiningDate)}</p>
+            </div>
+          </div>
+          <div className="mt-4 bg-muted/30 p-3 rounded-xl border border-border">
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-xs font-semibold">Monthly Attendance Rate</span>
+              <span className={`text-xs font-bold ${attendanceRate >= 90 ? 'text-emerald-500' : attendanceRate >= 75 ? 'text-warning' : 'text-destructive'}`}>
+                {attendanceRate}%
+              </span>
+            </div>
+            <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+              <div 
+                className={`h-full ${attendanceRate >= 90 ? 'bg-emerald-500' : attendanceRate >= 75 ? 'bg-warning' : 'bg-destructive'}`} 
+                style={{ width: `${attendanceRate}%` }} 
+              />
             </div>
           </div>
         </CardContent>

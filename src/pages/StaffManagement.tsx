@@ -7,18 +7,19 @@ import { useNavigate } from "react-router-dom";
 import { Button, Input, Card, CardContent, Badge, EmptyState, Spinner, Skeleton } from "@/components/ui";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { staffService } from "@/services";
+import { staffService, settingsService } from "@/services";
 import { type Staff, STAFF_ROLES } from "@/types";
 import { formatCurrency, formatDate, getInitials, generateAvatarColor } from "@/lib/utils";
 
 const staffSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
-  role: z.enum(["manager","cashier","worker","delivery","security","cleaner","other"]),
+  role: z.string().min(2, "Role is required"),
+  customRole: z.string().optional(),
   phone: z.string().min(10, "Enter valid phone"),
   salaryType: z.enum(["monthly", "daily"]),
   monthlySalary: z.preprocess((v) => Number(v) || 0, z.number().min(0)).default(0),
   dailyWage: z.preprocess((v) => Number(v) || 0, z.number().min(0)).default(0),
-  joiningDate: z.string().min(1, "Joining date required"),
+  joiningDate: z.string().optional(),
   allowedCasualLeavesPerMonth: z.preprocess((v) => Number(v) || 2, z.number().min(0).max(31)).default(2),
   note: z.string().optional(),
   address: z.string().optional(),
@@ -36,6 +37,7 @@ export function StaffManagement() {
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [customRoles, setCustomRoles] = useState<string[]>([]);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -45,9 +47,14 @@ export function StaffManagement() {
   });
 
   const salaryType = watch("salaryType");
+  const selectedRole = watch("role");
 
   useEffect(() => {
     setLoading(true);
+    
+    // Fetch custom roles
+    settingsService.getCustomRoles().then(setCustomRoles);
+
     const unsubscribe = staffService.subscribeAll((data) => {
       setStaff(data);
       setLoading(false);
@@ -82,16 +89,38 @@ export function StaffManagement() {
   const onSubmit = async (data: StaffFormData) => {
     setSaving(true);
     try {
+      let finalRole = data.role;
+      if (data.role === "other" && data.customRole) {
+        finalRole = data.customRole.trim().toLowerCase();
+        await settingsService.addCustomRole(finalRole);
+        if (!customRoles.includes(finalRole)) {
+          setCustomRoles([...customRoles, finalRole]);
+        }
+      }
+
+      const payload = {
+        name: data.name,
+        role: finalRole,
+        phone: data.phone,
+        salaryType: data.salaryType,
+        monthlySalary: data.monthlySalary,
+        dailyWage: data.dailyWage,
+        joiningDate: data.joiningDate || new Date().toISOString().split("T")[0],
+        allowedCasualLeavesPerMonth: data.allowedCasualLeavesPerMonth,
+        note: data.note,
+        address: data.address,
+      };
+
       if (editItem?.id) {
-        await staffService.update(editItem.id, { ...data });
+        await staffService.update(editItem.id, payload);
         toast({ type: "success", title: "Staff Updated" });
       } else {
         await staffService.add({
-          ...data,
+          ...payload,
           leaveCount: 0,
           status: "active",
         } as any);
-        toast({ type: "success", title: "Staff Added", description: `${data.name} added successfully.` });
+        toast({ type: "success", title: "Staff Added", description: `${payload.name} added successfully.` });
       }
       setModalOpen(false);
     } catch (err: any) {
@@ -131,6 +160,7 @@ export function StaffManagement() {
         <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} className="flex h-10 rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <option value="all">All Roles</option>
           {STAFF_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          {customRoles.map((r) => <option key={r} value={r} className="capitalize">{r}</option>)}
         </select>
         <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="flex h-10 rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <option value="all">All Status</option>
@@ -217,10 +247,23 @@ export function StaffManagement() {
             <div>
               <label className="text-sm font-medium text-foreground block mb-1.5">Role *</label>
               <select {...register("role")} className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="">Select Role</option>
                 {STAFF_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                {customRoles.map((r) => <option key={r} value={r} className="capitalize">{r}</option>)}
+                <option value="other">Other</option>
               </select>
+              {errors.role && <p className="text-xs text-red-400 mt-1">{errors.role.message}</p>}
             </div>
-            <div>
+
+            {selectedRole === "other" && (
+              <div className="col-span-2 sm:col-span-1">
+                <label className="text-sm font-medium text-foreground block mb-1.5">Custom Role *</label>
+                <Input {...register("customRole")} placeholder="e.g. Machine Operator" required />
+                {errors.customRole && <p className="text-xs text-red-400 mt-1">{errors.customRole.message}</p>}
+              </div>
+            )}
+            
+            <div className={selectedRole === "other" ? "col-span-2 sm:col-span-1" : ""}>
               <label className="text-sm font-medium text-foreground block mb-1.5">Phone *</label>
               <Input {...register("phone")} placeholder="9876543210" />
               {errors.phone && <p className="text-xs text-red-400 mt-1">{errors.phone.message}</p>}

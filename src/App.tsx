@@ -16,6 +16,7 @@ const SalaryManagement = lazy(() => import("@/pages/SalaryManagement").then(m =>
 const LeaveManagement = lazy(() => import("@/pages/LeaveManagement").then(m => ({ default: m.LeaveManagement })));
 const Analytics = lazy(() => import("@/pages/Analytics").then(m => ({ default: m.Analytics })));
 const Settings = lazy(() => import("@/pages/Settings").then(m => ({ default: m.Settings })));
+const HistoryReports = lazy(() => import("@/pages/HistoryReports").then(m => ({ default: m.HistoryReports })));
 
 const FullPageLoader = ({ message = "Connecting to Cloud..." }: { message?: string }) => (
   <div className="h-screen w-full flex items-center justify-center bg-background">
@@ -77,6 +78,7 @@ export function App() {
                       <Route path="/leaves" element={<LeaveManagement />} />
                       <Route path="/analytics" element={<Analytics />} />
                       <Route path="/settings" element={<Settings />} />
+                      <Route path="/history" element={<HistoryReports />} />
                       {/* Redirect temp-staff to staff (was causing 404 from nav) */}
                       <Route path="/temp-staff" element={<Navigate to="/staff" replace />} />
                       {/* Catch-all: redirect unknown paths to dashboard */}

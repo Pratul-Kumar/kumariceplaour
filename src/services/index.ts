@@ -448,7 +448,60 @@ export const tempStaffService = {
   delete: async () => {},
 };
 
+const settingsCol = collection(db, "settings");
+
 export const settingsService = {
-  get: async (_key: string) => ({ value: "dark" }),
-  set: async (_key: string, _value: string) => {},
+  get: async (key: string) => {
+    const snap = await getDocs(query(settingsCol, where("key", "==", key)));
+    if (snap.empty) return null;
+    return mapDoc<AppSettings>(snap.docs[0]);
+  },
+  set: async (key: string, value: string) => {
+    const existing = await settingsService.get(key);
+    if (existing && existing.id) {
+      await updateDoc(doc(db, "settings", existing.id), { value });
+    } else {
+      await addDoc(settingsCol, { key, value });
+    }
+  },
+  getCustomRoles: async (): Promise<string[]> => {
+    const setting = await settingsService.get("customRoles");
+    if (!setting || !setting.value) return [];
+    try {
+      return JSON.parse(setting.value);
+    } catch {
+      return [];
+    }
+  },
+  addCustomRole: async (role: string) => {
+    const roles = await settingsService.getCustomRoles();
+    if (!roles.includes(role)) {
+      roles.push(role);
+      await settingsService.set("customRoles", JSON.stringify(roles));
+    }
+  }
+};
+
+// ─── ADVANCE SERVICE ────────────────────────────────────────────────────────────
+const advancesCol = collection(db, "advanceRecords");
+
+export const advanceService = {
+  getByMonth: async (monthStr: string) => {
+    // monthStr format: YYYY-MM
+    const q = query(advancesCol, where("date", ">=", `${monthStr}-01`), where("date", "<=", `${monthStr}-31`));
+    const snap = await getDocs(q);
+    const records = snap.docs.map(mapDoc<AdvanceRecord>);
+    records.sort((a, b) => b.date.localeCompare(a.date));
+    return records;
+  },
+  getByStaff: async (staffId: string) => {
+    const snap = await getDocs(query(advancesCol, where("staffId", "==", staffId)));
+    const records = snap.docs.map(mapDoc<AdvanceRecord>);
+    records.sort((a, b) => b.date.localeCompare(a.date));
+    return records;
+  },
+  add: async (data: Omit<AdvanceRecord, "id" | "createdAt" | "updatedAt">) => {
+    const now = new Date().toISOString();
+    return addDoc(advancesCol, { ...data, createdAt: now, updatedAt: now });
+  }
 };
