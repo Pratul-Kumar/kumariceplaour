@@ -39,7 +39,11 @@ export const staffService = {
     onSnapshot(staffCol, s => cb(s.docs.map(mapDoc<Staff>))),
 
   subscribeActive: (cb: (d: Staff[]) => void) =>
-    onSnapshot(query(staffCol, where("status", "==", "active")), s => cb(s.docs.map(mapDoc<Staff>))),
+    onSnapshot(
+      query(staffCol, where("status", "==", "active")),
+      s => cb(s.docs.map(mapDoc<Staff>)),
+      err => console.error("[staffService.subscribeActive]", err.message)
+    ),
 
   subscribeById: (id: string, cb: (d: Staff | null) => void) =>
     onSnapshot(doc(db, "staff", id), d => cb(d.exists() ? mapDoc<Staff>(d) : null)),
@@ -74,8 +78,12 @@ const attendanceCol = collection(db, "attendance");
 
 export const attendanceService = {
   subscribeByMonth: (month: string, cb: (d: Attendance[]) => void) => {
+    // range on same field (date) — no composite index needed
     const q = query(attendanceCol, where("date", ">=", `${month}-01`), where("date", "<=", `${month}-31`));
-    return onSnapshot(q, s => cb(s.docs.map(mapDoc<Attendance>)));
+    return onSnapshot(q,
+      s => cb(s.docs.map(mapDoc<Attendance>)),
+      err => console.error("[attendanceService.subscribeByMonth]", err.message)
+    );
   },
 
   getByStaffAndMonth: async (staffId: string, month: string) => {
@@ -121,21 +129,26 @@ const expensesCol = collection(db, "expenses");
 
 export const expenseService = {
   subscribeByMonth: (month: string, cb: (d: Expense[]) => void) => {
+    // range filter on single field (date) — no composite index needed
     const q = query(
       expensesCol,
       where("date", ">=", `${month}-01`),
-      where("date", "<=", `${month}-31`),
-      orderBy("date", "desc")
+      where("date", "<=", `${month}-31`)
     );
-    return onSnapshot(q, snap => {
-      const data = snap.docs.map(mapDoc<Expense>);
-      let total = 0;
-      const cats: Record<string, number> = {};
-      data.forEach(e => { total += e.amount; cats[e.category] = (cats[e.category] || 0) + e.amount; });
-      expenseMonthCache.set(month, total);
-      expenseCatCache.set(month, cats);
-      cb(data);
-    });
+    return onSnapshot(q,
+      snap => {
+        const data = snap.docs.map(mapDoc<Expense>);
+        // Sort client-side descending — no orderBy = no composite index
+        data.sort((a, b) => b.date.localeCompare(a.date));
+        let total = 0;
+        const cats: Record<string, number> = {};
+        data.forEach(e => { total += e.amount; cats[e.category] = (cats[e.category] || 0) + e.amount; });
+        expenseMonthCache.set(month, total);
+        expenseCatCache.set(month, cats);
+        cb(data);
+      },
+      err => console.error("[expenseService.subscribeByMonth]", err.message)
+    );
   },
 
   getMonthTotal: async (month: string): Promise<number> => {
@@ -195,58 +208,87 @@ const salaryPaymentsCol = collection(db, "salaryPayments");
 
 export const salaryService = {
   // ── Real-time subscriptions ─────────────────────────────────────────────────
-  
+
   /** Live records for a specific month — used by salary page */
   subscribeByMonth: (month: number, year: number, cb: (d: SalaryRecord[]) => void) => {
+    // ONLY equality filters — no orderBy needed — no composite index required
     const q = query(salaryCol, where("month", "==", month), where("year", "==", year));
-    return onSnapshot(q, s => cb(s.docs.map(mapDoc<SalaryRecord>)));
+    return onSnapshot(q,
+      s => cb(s.docs.map(mapDoc<SalaryRecord>)),
+      err => console.error("[salaryService.subscribeByMonth]", err.message)
+    );
   },
 
-  /** Live records for a specific staff member — for staff profile / history */
+  /** Live records for a specific staff member — sorted client-side (no composite index) */
   subscribeRecordsByStaff: (staffId: string, cb: (d: SalaryRecord[]) => void) => {
-    const q = query(salaryCol, where("staffId", "==", staffId), orderBy("createdAt", "desc"));
-    return onSnapshot(q, s => cb(s.docs.map(mapDoc<SalaryRecord>)));
+    const q = query(salaryCol, where("staffId", "==", staffId));
+    return onSnapshot(q,
+      s => {
+        const records = s.docs.map(mapDoc<SalaryRecord>);
+        records.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        cb(records);
+      },
+      err => console.error("[salaryService.subscribeRecordsByStaff]", err.message)
+    );
   },
 
-  /** Live payments for a specific salary record — CROSS-DEVICE SYNC FIX */
+  /** Live payments for a specific salary record — sorted client-side (no composite index) */
   subscribePaymentsByRecord: (recordId: string, cb: (d: SalaryPayment[]) => void) => {
-    const q = query(salaryPaymentsCol, where("salaryRecordId", "==", recordId), orderBy("paymentDate", "desc"));
-    return onSnapshot(q, s => cb(s.docs.map(mapDoc<SalaryPayment>)));
+    const q = query(salaryPaymentsCol, where("salaryRecordId", "==", recordId));
+    return onSnapshot(q,
+      s => {
+        const payments = s.docs.map(mapDoc<SalaryPayment>);
+        payments.sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
+        cb(payments);
+      },
+      err => console.error("[salaryService.subscribePaymentsByRecord]", err.message)
+    );
   },
 
-  /** Live payments for a staff member (all time) */
+  /** Live payments for a staff member (all time) — sorted client-side */
   subscribePaymentsByStaff: (staffId: string, cb: (d: SalaryPayment[]) => void) => {
-    const q = query(salaryPaymentsCol, where("staffId", "==", staffId), orderBy("paymentDate", "desc"));
-    return onSnapshot(q, s => cb(s.docs.map(mapDoc<SalaryPayment>)));
+    const q = query(salaryPaymentsCol, where("staffId", "==", staffId));
+    return onSnapshot(q,
+      s => {
+        const payments = s.docs.map(mapDoc<SalaryPayment>);
+        payments.sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
+        cb(payments);
+      },
+      err => console.error("[salaryService.subscribePaymentsByStaff]", err.message)
+    );
   },
 
-  /** Live pending/partial records — for dashboard salary due total */
+  /** Live pending/partial records — uses != which needs no extra index */
   subscribePending: (cb: (d: SalaryRecord[]) => void) =>
-    onSnapshot(query(salaryCol, where("status", "!=", "paid")), s => cb(s.docs.map(mapDoc<SalaryRecord>))),
+    onSnapshot(
+      query(salaryCol, where("status", "!=", "paid")),
+      s => cb(s.docs.map(mapDoc<SalaryRecord>)),
+      err => console.error("[salaryService.subscribePending]", err.message)
+    ),
 
-  // ── One-time reads (all use plain getDocs — no server-forced reads) ─────────
+  // ── One-time reads ─────────────────────────────────────────────────────────
 
   getPending: async () => {
     const s = await getDocs(query(salaryCol, where("status", "!=", "paid")));
     return s.docs.map(mapDoc<SalaryRecord>);
   },
 
-  /** Get all salary records for a staff member — for previous due calculation */
+  /** Get all salary records for a staff member — sorted client-side */
   getByStaff: async (staffId: string): Promise<SalaryRecord[]> => {
-    const q = query(salaryCol, where("staffId", "==", staffId), orderBy("createdAt", "desc"));
-    const snap = await getDocs(q);
-    return snap.docs.map(mapDoc<SalaryRecord>);
+    const snap = await getDocs(query(salaryCol, where("staffId", "==", staffId)));
+    const records = snap.docs.map(mapDoc<SalaryRecord>);
+    records.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return records;
   },
 
   /**
-   * Get the most recent unpaid/partial record for a staff member BEFORE a given month.
-   * Used during salary generation to automatically carry forward dues.
+   * Most recent unpaid record before the given month — sorted client-side.
+   * No orderBy = no composite index required.
    */
   getLastUnpaidRecord: async (staffId: string, beforeYear: number, beforeMonth: number): Promise<SalaryRecord | null> => {
-    const q = query(salaryCol, where("staffId", "==", staffId), orderBy("createdAt", "desc"), limit(10));
-    const snap = await getDocs(q);
+    const snap = await getDocs(query(salaryCol, where("staffId", "==", staffId)));
     const records = snap.docs.map(mapDoc<SalaryRecord>);
-    // Find the most recent record that is before the target month and has remaining dues
+    records.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const target = records.find(r => {
       const isBefore = r.year < beforeYear || (r.year === beforeYear && r.month < beforeMonth);
       return isBefore && r.remainingDue > 0;
@@ -254,17 +296,19 @@ export const salaryService = {
     return target || null;
   },
 
-  /** Check if a salary record already exists for a staff+month+year */
+  /** Duplicate check — equality-only query, no index needed */
   getExistingRecord: async (staffId: string, month: number, year: number): Promise<SalaryRecord | null> => {
     const q = query(salaryCol, where("staffId", "==", staffId), where("month", "==", month), where("year", "==", year));
     const snap = await getDocs(q);
     return snap.empty ? null : mapDoc<SalaryRecord>(snap.docs[0]);
   },
 
+  /** Payments for a record — sorted client-side */
   getPaymentsForRecord: async (salaryRecordId: string): Promise<SalaryPayment[]> => {
-    const q = query(salaryPaymentsCol, where("salaryRecordId", "==", salaryRecordId), orderBy("paymentDate", "desc"));
-    const snap = await getDocs(q);
-    return snap.docs.map(mapDoc<SalaryPayment>);
+    const snap = await getDocs(query(salaryPaymentsCol, where("salaryRecordId", "==", salaryRecordId)));
+    const payments = snap.docs.map(mapDoc<SalaryPayment>);
+    payments.sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
+    return payments;
   },
 
   // ── Writes ──────────────────────────────────────────────────────────────────
@@ -332,8 +376,17 @@ const leavesCol = collection(db, "leaveRecords");
 
 export const leaveService = {
   subscribeByMonth: (month: string, cb: (d: LeaveRecord[]) => void) => {
-    const q = query(leavesCol, where("leaveDate", ">=", `${month}-01`), where("leaveDate", "<=", `${month}-31`), orderBy("leaveDate", "asc"));
-    return onSnapshot(q, s => { const data = s.docs.map(mapDoc<LeaveRecord>); leaveCache.set(month, data); cb(data); });
+    // range on same field (leaveDate) — no composite index needed
+    const q = query(leavesCol, where("leaveDate", ">=", `${month}-01`), where("leaveDate", "<=", `${month}-31`));
+    return onSnapshot(q,
+      s => {
+        const data = s.docs.map(mapDoc<LeaveRecord>);
+        data.sort((a, b) => a.leaveDate.localeCompare(b.leaveDate));
+        leaveCache.set(month, data);
+        cb(data);
+      },
+      err => console.error("[leaveService.subscribeByMonth]", err.message)
+    );
   },
 
   /** Live listener for all leaves on a specific date — used by Dashboard */
@@ -349,17 +402,19 @@ export const leaveService = {
   },
 
   getByStaff: async (staffId: string) => {
-    const q = query(leavesCol, where("staffId", "==", staffId), orderBy("leaveDate", "desc"));
-    const snap = await getDocs(q);
-    return snap.docs.map(mapDoc<LeaveRecord>);
+    const snap = await getDocs(query(leavesCol, where("staffId", "==", staffId)));
+    const data = snap.docs.map(mapDoc<LeaveRecord>);
+    data.sort((a, b) => b.leaveDate.localeCompare(a.leaveDate));
+    return data;
   },
 
   getByMonth: async (month: string) => {
     const cached = leaveCache.get(month);
     if (cached !== undefined) return cached;
-    const q = query(leavesCol, where("leaveDate", ">=", `${month}-01`), where("leaveDate", "<=", `${month}-31`), orderBy("leaveDate", "asc"));
+    const q = query(leavesCol, where("leaveDate", ">=", `${month}-01`), where("leaveDate", "<=", `${month}-31`));
     const snap = await getDocs(q);
     const data = snap.docs.map(mapDoc<LeaveRecord>);
+    data.sort((a, b) => a.leaveDate.localeCompare(b.leaveDate));
     leaveCache.set(month, data);
     return data;
   },
