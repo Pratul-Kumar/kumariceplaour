@@ -75,8 +75,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* Logo */}
         <div className="flex items-center justify-between p-5 border-b border-border">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center shadow-lg text-lg">
-              🍦
+            <div className="w-10 h-10 rounded-xl bg-white border border-border/50 flex items-center justify-center shadow-sm">
+              <img src="/logo.png" alt="Logo" className="w-7 h-7 object-contain" />
             </div>
             <div>
               <h1 className="text-base font-bold text-foreground">Kumar Ice</h1>
