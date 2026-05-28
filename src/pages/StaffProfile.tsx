@@ -19,18 +19,38 @@ export function StaffProfile() {
   useEffect(() => {
     if (!id) return;
     const staffId = id;
-    Promise.all([
-      staffService.getById(staffId),
-      salaryService.getByStaff(staffId),
-      leaveService.getByStaff(staffId),
-      attendanceService.getByStaffAndMonth(staffId, new Date().toISOString().slice(0, 7)),
-    ]).then(([s, sal, lv, att]) => {
-      setStaff(s || null);
-      setSalaryHistory(sal);
-      setLeaveHistory(lv);
-      setCurrentMonthAtt(att);
-      setLoading(false);
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    let active = true;
+
+    // Real-time subscription for the staff document itself (picks up edits from other devices)
+    const unsubStaff = staffService.subscribeById(staffId, (s) => {
+      if (active) {
+        setStaff(s);
+        setLoading(false);
+      }
     });
+
+    // Real-time subscription for attendance this month
+    const unsubAtt = attendanceService.subscribeByMonth(currentMonth, (attData) => {
+      if (active) {
+        // Filter to just this staff member
+        setCurrentMonthAtt(attData.filter(a => a.staffId === staffId));
+      }
+    });
+
+    // One-time server fetches for history (salary + leave) — forced from server for freshness
+    salaryService.getByStaff(staffId).then((sal) => {
+      if (active) setSalaryHistory(sal);
+    });
+    leaveService.getByStaff(staffId).then((lv) => {
+      if (active) setLeaveHistory(lv);
+    });
+
+    return () => {
+      active = false;
+      unsubStaff();
+      unsubAtt();
+    };
   }, [id]);
 
   if (loading) return (

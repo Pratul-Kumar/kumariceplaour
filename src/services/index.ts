@@ -1,6 +1,7 @@
 import { 
   collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, 
-  query, where, orderBy, onSnapshot, serverTimestamp, setDoc, limit
+  query, where, orderBy, onSnapshot, setDoc, limit,
+  getDocsFromServer, getDocFromServer
 } from "firebase/firestore";
 import { db } from "@/firebase/config";
 import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, LeaveRecord, TemporaryStaff, AppSettings } from "@/types";
@@ -20,18 +21,30 @@ export const staffService = {
   subscribeAll: (callback: (data: Staff[]) => void) => {
     return onSnapshot(staffCol, (snapshot) => callback(snapshot.docs.map(mapDoc<Staff>)));
   },
+  // Real-time subscription filtered to active staff (used by forms that need the list live)
+  subscribeActive: (callback: (data: Staff[]) => void) => {
+    const q = query(staffCol, where("status", "==", "active"));
+    return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(mapDoc<Staff>)));
+  },
   getAll: async () => {
-    const snapshot = await getDocs(staffCol);
+    const snapshot = await getDocsFromServer(staffCol);
     return snapshot.docs.map(mapDoc<Staff>);
   },
   getActive: async () => {
+    // Always fetch from server to guarantee cross-device freshness
     const q = query(staffCol, where("status", "==", "active"));
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocsFromServer(q);
     return snapshot.docs.map(mapDoc<Staff>);
   },
   getById: async (id: string) => {
-    const docSnap = await getDoc(doc(db, "staff", id));
+    const docSnap = await getDocFromServer(doc(db, "staff", id));
     return docSnap.exists() ? mapDoc<Staff>(docSnap) : undefined;
+  },
+  // Real-time subscription for a single staff document
+  subscribeById: (id: string, callback: (data: Staff | null) => void) => {
+    return onSnapshot(doc(db, "staff", id), (docSnap) => {
+      callback(docSnap.exists() ? mapDoc<Staff>(docSnap) : null);
+    });
   },
   add: async (data: Omit<Staff, "id" | "createdAt" | "updatedAt">) => {
     const now = new Date().toISOString();
@@ -42,7 +55,7 @@ export const staffService = {
   },
   delete: async (id: string) => deleteDoc(doc(db, "staff", id)),
   count: async () => {
-    const snapshot = await getDocs(staffCol);
+    const snapshot = await getDocsFromServer(staffCol);
     return snapshot.size;
   }
 };
@@ -54,8 +67,6 @@ const attendanceCol = collection(db, "attendance");
 
 export const attendanceService = {
   subscribeByMonth: (month: string, callback: (data: Attendance[]) => void) => {
-    // Month is YYYY-MM
-    // To do startsWith in Firestore: date >= YYYY-MM-01 and date <= YYYY-MM-31
     const startDate = `${month}-01`;
     const endDate = `${month}-31`;
     const q = query(attendanceCol, where("date", ">=", startDate), where("date", "<=", endDate));
@@ -65,16 +76,16 @@ export const attendanceService = {
     const startDate = `${month}-01`;
     const endDate = `${month}-31`;
     const q = query(attendanceCol, where("staffId", "==", staffId), where("date", ">=", startDate), where("date", "<=", endDate));
-    const snapshot = await getDocs(q);
+    // Force server fetch for cross-device accuracy
+    const snapshot = await getDocsFromServer(q);
     return snapshot.docs.map(mapDoc<Attendance>);
   },
   getByDate: async (date: string) => {
     const q = query(attendanceCol, where("date", "==", date));
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocsFromServer(q);
     return snapshot.docs.map(mapDoc<Attendance>);
   },
   upsert: async (data: Omit<Attendance, "id" | "createdAt" | "updatedAt">) => {
-    // Check if exists
     const q = query(attendanceCol, where("staffId", "==", data.staffId), where("date", "==", data.date));
     const snapshot = await getDocs(q);
     const now = new Date().toISOString();
@@ -94,7 +105,7 @@ export const attendanceService = {
   },
   getTodaySummary: async () => {
     const today = new Date().toISOString().split("T")[0];
-    const snapshot = await getDocs(query(attendanceCol, where("date", "==", today)));
+    const snapshot = await getDocsFromServer(query(attendanceCol, where("date", "==", today)));
     const summary = { present: 0, absent: 0, half_day: 0, leave: 0, total: snapshot.size };
     snapshot.docs.forEach(d => {
       const status = d.data().status as string;
@@ -111,7 +122,10 @@ export const attendanceService = {
 // ============================================================
 const expensesCol = collection(db, "expenses");
 
-// Simple client-side cache to avoid redundant database reads for historical months
+// NOTE: This cache is intentionally NOT used for cross-device sync scenarios.
+// It is only populated by real-time subscriptions (onSnapshot), so it always
+// reflects the latest server state after the first snapshot fires.
+// One-time queries (getMonthTotal, getCategoryTotals) now always hit the server.
 const expenseCache = {
   monthTotals: {} as Record<string, number>,
   categoryTotals: {} as Record<string, Record<string, number>>,
@@ -119,7 +133,7 @@ const expenseCache = {
 
 const invalidateExpenseCache = (date?: string) => {
   if (date) {
-    const month = date.substring(0, 7); // YYYY-MM
+    const month = date.substring(0, 7);
     delete expenseCache.monthTotals[month];
     delete expenseCache.categoryTotals[month];
   } else {
@@ -135,7 +149,7 @@ export const expenseService = {
     const q = query(expensesCol, where("date", ">=", startDate), where("date", "<=", endDate), orderBy("date", "desc"));
     return onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(mapDoc<Expense>);
-      // Sync real-time snapshot updates with cache
+      // Keep cache in sync with live snapshots
       let monthTotal = 0;
       const catTotals: Record<string, number> = {};
       data.forEach(e => {
@@ -149,21 +163,24 @@ export const expenseService = {
   },
   getRecent: async (limitCount = 10) => {
     const q = query(expensesCol, orderBy("date", "desc"), limit(limitCount));
-    const snapshot = await getDocs(q);
+    // Always force server for recent items to show cross-device writes
+    const snapshot = await getDocsFromServer(q);
     return snapshot.docs.map(mapDoc<Expense>);
   },
   getTodayTotal: async () => {
     const today = new Date().toISOString().split("T")[0];
-    const snapshot = await getDocs(query(expensesCol, where("date", "==", today)));
+    const snapshot = await getDocsFromServer(query(expensesCol, where("date", "==", today)));
     return snapshot.docs.reduce((sum, docSnap) => sum + docSnap.data().amount, 0);
   },
   getMonthTotal: async (month: string) => {
+    // Use cache if available (populated by subscribeByMonth snapshots)
     if (expenseCache.monthTotals[month] !== undefined) {
       return expenseCache.monthTotals[month];
     }
     const startDate = `${month}-01`;
     const endDate = `${month}-31`;
-    const snapshot = await getDocs(query(expensesCol, where("date", ">=", startDate), where("date", "<=", endDate)));
+    // Always go to server for months not yet cached by a live subscription
+    const snapshot = await getDocsFromServer(query(expensesCol, where("date", ">=", startDate), where("date", "<=", endDate)));
     const total = snapshot.docs.reduce((sum, docSnap) => sum + docSnap.data().amount, 0);
     expenseCache.monthTotals[month] = total;
     return total;
@@ -174,7 +191,7 @@ export const expenseService = {
     }
     const startDate = `${month}-01`;
     const endDate = `${month}-31`;
-    const snapshot = await getDocs(query(expensesCol, where("date", ">=", startDate), where("date", "<=", endDate)));
+    const snapshot = await getDocsFromServer(query(expensesCol, where("date", ">=", startDate), where("date", "<=", endDate)));
     const totals: Record<string, number> = {};
     snapshot.docs.forEach(d => {
       const cat = d.data().category;
@@ -210,9 +227,8 @@ export const salaryService = {
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(mapDoc<SalaryRecord>)));
   },
   getPending: async () => {
-    // Queries all salaries where status != paid
     const q = query(salaryCol, where("status", "!=", "paid"));
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocsFromServer(q);
     return snapshot.docs.map(mapDoc<SalaryRecord>);
   },
   subscribePending: (callback: (data: SalaryRecord[]) => void) => {
@@ -230,11 +246,10 @@ export const salaryService = {
     return deleteDoc(doc(db, "salaryRecords", id));
   },
   addPayment: async (data: Omit<SalaryPayment, "id">) => {
-    // Add payment
     const paymentRef = await addDoc(salaryPaymentsCol, data);
     
     // Update salary record totals
-    const recordDoc = await getDoc(doc(db, "salaryRecords", data.salaryRecordId));
+    const recordDoc = await getDocFromServer(doc(db, "salaryRecords", data.salaryRecordId));
     if (recordDoc.exists()) {
       const record = recordDoc.data() as SalaryRecord;
       const newTotalPaid = (record.totalPaid || 0) + data.amountPaid;
@@ -252,12 +267,13 @@ export const salaryService = {
   },
   getPaymentsForRecord: async (salaryRecordId: string) => {
     const q = query(salaryPaymentsCol, where("salaryRecordId", "==", salaryRecordId), orderBy("paymentDate", "desc"));
-    const snapshot = await getDocs(q);
+    // Force server fetch so cross-device payments are always visible
+    const snapshot = await getDocsFromServer(q);
     return snapshot.docs.map(mapDoc<SalaryPayment>);
   },
   getByStaff: async (staffId: string) => {
     const q = query(salaryCol, where("staffId", "==", staffId));
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocsFromServer(q);
     return snapshot.docs.map(mapDoc<SalaryRecord>).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
   }
 };
@@ -270,19 +286,19 @@ const leavesCol = collection(db, "leaveRecords");
 export const leaveService = {
   getTodayCount: async () => {
     const today = new Date().toISOString().split("T")[0];
-    const snapshot = await getDocs(query(leavesCol, where("leaveDate", "==", today)));
+    const snapshot = await getDocsFromServer(query(leavesCol, where("leaveDate", "==", today)));
     return snapshot.size;
   },
   getByStaff: async (staffId: string) => {
     const q = query(leavesCol, where("staffId", "==", staffId), orderBy("leaveDate", "desc"));
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocsFromServer(q);
     return snapshot.docs.map(mapDoc<LeaveRecord>);
   },
   getByMonth: async (month: string) => {
     const startDate = `${month}-01`;
     const endDate = `${month}-31`;
     const q = query(leavesCol, where("leaveDate", ">=", startDate), where("leaveDate", "<=", endDate), orderBy("leaveDate", "asc"));
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocsFromServer(q);
     return snapshot.docs.map(mapDoc<LeaveRecord>);
   },
   subscribeByMonth: (month: string, callback: (data: LeaveRecord[]) => void) => {

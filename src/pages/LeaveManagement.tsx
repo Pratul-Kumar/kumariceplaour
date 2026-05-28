@@ -45,13 +45,11 @@ export function LeaveManagement() {
   });
 
   useEffect(() => {
-    let active = true;
-    staffService.getActive().then((data) => {
-      if (active) setStaffList(data);
+    // Real-time subscription so staff list stays fresh if another device adds/removes staff
+    const unsubStaff = staffService.subscribeActive((data) => {
+      setStaffList(data);
     });
-    return () => {
-      active = false;
-    };
+    return () => unsubStaff();
   }, []);
 
   useEffect(() => {
