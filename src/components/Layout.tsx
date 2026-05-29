@@ -1,225 +1,336 @@
 import React, { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Receipt, IndianRupee, CalendarOff,
-  HardHat, Settings, X, Menu, TrendingUp, Bell, Sun, Moon, ClipboardCheck, LogOut, Cloud, CloudOff, History
+import {
+  LayoutDashboard, Users, Receipt, IndianRupee, CalendarOff,
+  Settings, X, Menu, TrendingUp, ClipboardCheck, LogOut,
+  Cloud, CloudOff, History, ChevronRight
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useTheme } from "@/hooks/useTheme";
-import { Button } from "@/components/ui";
 import { useAuthStore } from "@/store/useAuthStore";
 import { auth } from "@/firebase/config";
 import { signOut } from "firebase/auth";
 
 const NAV_ITEMS = [
-  { to: "/",          icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/staff",     icon: Users,           label: "Staff" },
-  { to: "/attendance",icon: ClipboardCheck,  label: "Attendance" },
-  { to: "/expenses",  icon: Receipt,         label: "Expenses" },
-  { to: "/salary",    icon: IndianRupee,     label: "Salary" },
-  { to: "/leaves",    icon: CalendarOff,     label: "Leaves" },
-  { to: "/analytics", icon: TrendingUp,      label: "Analytics" },
-  { to: "/history",   icon: History,         label: "History" },
-  { to: "/settings",  icon: Settings,        label: "Settings" },
+  { to: "/",          icon: LayoutDashboard, label: "Dashboard",  color: "from-violet-500 to-indigo-500" },
+  { to: "/staff",     icon: Users,           label: "Staff",      color: "from-blue-500 to-cyan-500" },
+  { to: "/attendance",icon: ClipboardCheck,  label: "Attendance", color: "from-emerald-500 to-teal-500" },
+  { to: "/expenses",  icon: Receipt,         label: "Expenses",   color: "from-rose-500 to-pink-500" },
+  { to: "/salary",    icon: IndianRupee,     label: "Salary",     color: "from-amber-500 to-orange-500" },
+  { to: "/leaves",    icon: CalendarOff,     label: "Leaves",     color: "from-sky-500 to-blue-500" },
+  { to: "/analytics", icon: TrendingUp,      label: "Analytics",  color: "from-purple-500 to-violet-500" },
+  { to: "/history",   icon: History,         label: "History",    color: "from-slate-400 to-slate-500" },
+  { to: "/settings",  icon: Settings,        label: "Settings",   color: "from-gray-400 to-gray-500" },
 ];
+
+const NavItem = memo(function NavItem({
+  to, icon: Icon, label, color,
+  onClick
+}: typeof NAV_ITEMS[0] & { onClick: () => void }) {
+  return (
+    <NavLink
+      to={to}
+      end={to === "/"}
+      onClick={onClick}
+      className={({ isActive }) =>
+        cn(
+          "group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+          isActive
+            ? "text-white"
+            : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          {/* Active background */}
+          {isActive && (
+            <span className="absolute inset-0 rounded-xl bg-gradient-to-r from-indigo-500/20 to-violet-500/10 border border-indigo-500/25" />
+          )}
+          {/* Active left accent */}
+          {isActive && (
+            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full bg-gradient-to-b from-indigo-400 to-violet-400 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
+          )}
+
+          {/* Icon with gradient bg when active */}
+          <span className={cn(
+            "relative z-10 flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-200",
+            isActive
+              ? `bg-gradient-to-br ${color} shadow-lg`
+              : "bg-white/5 group-hover:bg-white/8"
+          )}>
+            <Icon className={cn("h-4 w-4", isActive ? "text-white" : "text-slate-400 group-hover:text-slate-200")} />
+          </span>
+
+          <span className="relative z-10 flex-1">{label}</span>
+
+          {isActive && (
+            <ChevronRight className="relative z-10 h-3.5 w-3.5 text-indigo-400 opacity-60" />
+          )}
+        </>
+      )}
+    </NavLink>
+  );
+});
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const { user } = useAuthStore();
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== "undefined" ? navigator.onLine : true
+  );
 
   const currentPage = useMemo(
     () => NAV_ITEMS.find((n) => n.to === location.pathname)?.label || "Dashboard",
     [location.pathname]
   );
-  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
 
-  // Pre-compute the date string once per day (changes at midnight via memo)
   const dateStr = useMemo(
-    () => new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [] // computed once on mount; date won't change during a session
+    () => new Date().toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric" }),
+    []
   );
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
+    const on  = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
 
-  const handleLogout = () => {
-    signOut(auth);
-  };
+  const handleLogout = useCallback(() => signOut(auth), []);
+  const closeSidebar  = useCallback(() => setSidebarOpen(false), []);
+
+  const userInitial = user?.email?.charAt(0).toUpperCase() || "A";
+  const userName    = user?.email?.split("@")[0] || "Admin";
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Sidebar Overlay */}
+    <div className="flex h-screen overflow-hidden" style={{ background: "hsl(220,20%,6%)" }}>
+
+      {/* ── Overlay ───────────────────────────────────────────── */}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div
+          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
+          onClick={closeSidebar}
+        />
       )}
 
-      {/* Sidebar */}
-      <aside
-        className={cn(
-          "fixed top-0 left-0 h-full w-64 z-50 flex flex-col bg-card border-r border-border transition-transform duration-300 ease-out",
-          "lg:relative lg:translate-x-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        )}
+      {/* ── Sidebar ───────────────────────────────────────────── */}
+      <aside className={cn(
+        "fixed top-0 left-0 h-full w-64 z-50 flex flex-col transition-transform duration-300 ease-out",
+        "lg:relative lg:translate-x-0",
+        // Glass sidebar
+        "border-r",
+        sidebarOpen ? "translate-x-0" : "-translate-x-full"
+      )}
+        style={{
+          background: "linear-gradient(180deg, rgba(17,21,32,0.98) 0%, rgba(11,14,22,0.99) 100%)",
+          borderColor: "rgba(255,255,255,0.06)",
+          backdropFilter: "blur(24px)",
+        }}
       >
-        {/* Logo */}
-        <div className="flex items-center justify-between p-5 border-b border-border">
+        {/* ── Logo ──────────────────────────────────────────── */}
+        <div className="flex items-center justify-between px-4 pt-5 pb-4"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}
+        >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white border border-border/50 flex items-center justify-center shadow-sm">
-              <img src="/logo.png" alt="Logo" className="w-7 h-7 object-contain" />
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-foreground">Kumar Ice</h1>
-              <p className="text-[10px] text-muted-foreground">Parlour Manager</p>
-            </div>
-          </div>
-          <button onClick={() => setSidebarOpen(false)} className="text-muted-foreground hover:text-foreground lg:hidden">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Nav */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === "/"}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors group",
-                  isActive
-                    ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <Icon className={cn("h-4.5 w-4.5 shrink-0", isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-foreground")} />
-                  {label}
-                </>
-              )}
-            </NavLink>
-          ))}
-        </nav>
-
-        {/* Bottom */}
-        <div className="p-4 border-t border-border space-y-3">
-          {isOnline ? (
-            <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 dark:bg-emerald-500/20 dark:text-emerald-400">
-              <Cloud className="w-4 h-4" />
-              <span className="text-[10px] font-medium uppercase tracking-wider">Cloud Sync Active</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-destructive/15 text-destructive border border-destructive/30 dark:bg-destructive/20 dark:text-red-400 animate-pulse">
-              <CloudOff className="w-4 h-4" />
-              <span className="text-[10px] font-medium uppercase tracking-wider">Offline - Local Mode</span>
-            </div>
-          )}
-          
-          <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 group hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer" onClick={handleLogout}>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold group-hover:from-red-500 group-hover:to-red-600">
-              {user?.email?.charAt(0).toUpperCase() || 'A'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-foreground truncate group-hover:text-red-600">{user?.email?.split('@')[0] || 'Admin'}</p>
-              <p className="text-[10px] text-muted-foreground truncate group-hover:text-red-500">Log out</p>
-            </div>
-            <LogOut className="w-4 h-4 text-muted-foreground group-hover:text-red-500" />
-          </div>
-        </div>
-      </aside>
-
-      {/* Main */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top bar */}
-        <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-30">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="text-muted-foreground hover:text-foreground lg:hidden p-2 rounded-lg hover:bg-accent transition-colors active:bg-accent/80"
-            >
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-xl  border border-border/50 flex items-center justify-center shadow-sm">
-                <img src="/logo.png" alt="Logo" className="w-10 h-7 object-contain" />
-                </div>
-
+            {/* Logo ring with glow */}
+            <div className="relative w-10 h-10 flex-shrink-0">
+              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 opacity-20 blur-md" />
+              <div className="relative w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)" }}
+              >
+                <img src="/logo.png" alt="Logo" className="w-7 h-7 object-contain" />
               </div>
-            </button>
+            </div>
             <div>
-              <h2 className="text-base font-semibold text-foreground">{currentPage}</h2>
-              <p className="text-xs text-muted-foreground hidden sm:block">
-                {dateStr}
+              <h1 className="text-sm font-bold text-white leading-tight">Kumar Ice</h1>
+              <p className="text-[10px] font-medium" style={{ color: "rgba(148,163,184,0.6)" }}>
+                Business Manager
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggleTheme}
-              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200"
+          <button
+            onClick={closeSidebar}
+            className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* ── Nav ───────────────────────────────────────────── */}
+        <nav className="flex-1 px-2.5 py-3 overflow-y-auto space-y-0.5 scrollbar-hide">
+          <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest"
+            style={{ color: "rgba(148,163,184,0.35)" }}
+          >
+            Navigation
+          </p>
+          {NAV_ITEMS.map((item) => (
+            <NavItem key={item.to} {...item} onClick={closeSidebar} />
+          ))}
+        </nav>
+
+        {/* ── Bottom ────────────────────────────────────────── */}
+        <div className="px-2.5 pb-4 pt-3 space-y-2"
+          style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}
+        >
+          {/* Sync status */}
+          {isOnline ? (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
+              style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.15)" }}
             >
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              <span className="dot-online flex-shrink-0" />
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
+                Cloud Sync Active
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl animate-pulse"
+              style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}
+            >
+              <CloudOff className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-red-400">
+                Offline Mode
+              </span>
+            </div>
+          )}
+
+          {/* User / logout */}
+          <button
+            onClick={handleLogout}
+            className="group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 hover:bg-red-500/8 press-effect"
+            style={{ border: "1px solid rgba(255,255,255,0.04)" }}
+          >
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-gradient-to-br from-violet-500 to-indigo-600 group-hover:from-red-500 group-hover:to-rose-600 transition-all duration-200">
+              {userInitial}
+            </div>
+            <div className="flex-1 min-w-0 text-left">
+              <p className="text-xs font-semibold text-slate-300 group-hover:text-red-300 truncate transition-colors">{userName}</p>
+              <p className="text-[10px] text-slate-500 group-hover:text-red-400 transition-colors">Sign out</p>
+            </div>
+            <LogOut className="h-3.5 w-3.5 text-slate-500 group-hover:text-red-400 transition-colors flex-shrink-0" />
+          </button>
+        </div>
+      </aside>
+
+      {/* ── Main area ─────────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+
+        {/* ── Top bar ───────────────────────────────────────── */}
+        <header
+          className="flex items-center justify-between px-4 py-3 sticky top-0 z-30 flex-shrink-0"
+          style={{
+            background: "rgba(10,13,20,0.85)",
+            backdropFilter: "blur(20px)",
+            borderBottom: "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
+          {/* Left: Hamburger + Page title */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden p-1.5 rounded-xl text-slate-400 hover:text-white transition-colors press-effect"
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}
+            >
+              <div className="flex items-center gap-2">
+                <img src="/logo.png" alt="Logo" className="w-6 h-6 object-contain" />
+                <Menu className="h-4 w-4" />
+              </div>
             </button>
-            <button className="relative p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200">
-              <Bell className="h-4 w-4" />
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
+
+            <div>
+              <h2 className="text-sm font-bold text-white leading-tight">{currentPage}</h2>
+              <p className="text-[10px] text-slate-500 hidden sm:block">{dateStr}</p>
+            </div>
+          </div>
+
+          {/* Right: Status chips */}
+          <div className="flex items-center gap-2">
+            {isOnline ? (
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
+                style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.15)" }}
+              >
+                <span className="dot-online" />
+                <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wide">Live</span>
+              </div>
+            ) : (
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
+                style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)" }}
+              >
+                <CloudOff className="h-3 w-3 text-red-400" />
+                <span className="text-[10px] font-semibold text-red-400 uppercase tracking-wide">Offline</span>
+              </div>
+            )}
+
+            {/* Avatar */}
+            <button
+              onClick={handleLogout}
+              title="Sign out"
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold transition-all duration-200 hover:scale-110 press-effect bg-gradient-to-br from-violet-500 to-indigo-600"
+            >
+              {userInitial}
             </button>
           </div>
         </header>
 
-        {/* Content */}
-        <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">
-          <div className="p-4 sm:p-6 animate-fade-in max-w-7xl mx-auto">
+        {/* ── Page Content ──────────────────────────────────── */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-4 sm:p-5 pb-24 lg:pb-6 animate-fade-in max-w-7xl mx-auto w-full">
             {children}
           </div>
         </main>
       </div>
 
-      {/* Mobile Bottom Nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-card/95 backdrop-blur-sm border-t border-border pb-safe">
-        <div className="flex items-center justify-around px-1 py-1">
-          {NAV_ITEMS.slice(0, 4).map(({ to, icon: Icon, label }) => (
+      {/* ── Mobile Bottom Nav ──────────────────────────────────── */}
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-40 lg:hidden pb-safe"
+        style={{
+          background: "rgba(10,13,20,0.96)",
+          backdropFilter: "blur(20px)",
+          borderTop: "1px solid rgba(255,255,255,0.07)",
+        }}
+      >
+        <div className="flex items-center justify-around px-1 py-1.5">
+          {NAV_ITEMS.slice(0, 4).map(({ to, icon: Icon, label, color }) => (
             <NavLink
               key={to}
               to={to}
               end={to === "/"}
               className={({ isActive }) =>
                 cn(
-                  "flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all duration-200 min-w-0",
-                  isActive ? "text-primary" : "text-muted-foreground"
+                  "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl transition-all duration-200 min-w-0 press-effect",
+                  isActive ? "text-white" : "text-slate-500"
                 )
               }
             >
               {({ isActive }) => (
                 <>
-                  <div className={cn("p-1.5 rounded-lg transition-all duration-200", isActive && "bg-primary/15")}>
-                    <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
+                  <div className={cn(
+                    "w-9 h-7 flex items-center justify-center rounded-lg transition-all duration-200",
+                    isActive ? `bg-gradient-to-br ${color} shadow-lg` : "bg-transparent"
+                  )}>
+                    <Icon className={cn("h-[18px] w-[18px]", isActive ? "text-white" : "text-slate-500")} />
                   </div>
-                  <span className={cn("text-[9px] font-medium truncate", isActive ? "text-primary" : "text-muted-foreground")}>{label}</span>
+                  <span className={cn(
+                    "text-[9px] font-semibold truncate transition-colors",
+                    isActive ? "text-white" : "text-slate-600"
+                  )}>
+                    {label}
+                  </span>
                 </>
               )}
             </NavLink>
           ))}
+
+          {/* More button */}
           <button
             onClick={() => setSidebarOpen(true)}
-            className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl text-muted-foreground"
+            className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl text-slate-500 press-effect"
           >
-            <div className="p-1.5 rounded-lg">
-              <Menu className="h-4 w-4" />
+            <div className="w-9 h-7 flex items-center justify-center rounded-lg">
+              <Menu className="h-[18px] w-[18px]" />
             </div>
-            <span className="text-[9px] font-medium">More</span>
+            <span className="text-[9px] font-semibold">More</span>
           </button>
         </div>
       </nav>

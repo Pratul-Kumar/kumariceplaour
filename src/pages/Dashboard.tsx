@@ -34,21 +34,25 @@ const StatCard = memo(function StatCard({ icon: Icon, label, value, sub, color, 
   color: string;
   loading: boolean;
 }) {
-  if (loading) return <Skeleton className="h-28 rounded-xl" />;
+  if (loading) return <Skeleton className="h-[120px] rounded-2xl" />;
   return (
-    <Card className="relative overflow-hidden group hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 hover:-translate-y-0.5">
-      <CardContent className="p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] sm:text-xs font-medium text-muted-foreground uppercase tracking-wider truncate">{label}</p>
-            <p className="text-lg sm:text-2xl font-bold text-foreground mt-1 truncate">{value}</p>
-            {sub && <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 truncate">{sub}</p>}
+    <Card className="relative overflow-hidden group glass-card">
+      <div className={`card-accent-primary absolute inset-0 rounded-2xl pointer-events-none`} />
+      <CardContent className="p-4 sm:p-5 h-full flex flex-col justify-between">
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div className={`p-2.5 rounded-xl bg-gradient-to-br ${color} shadow-lg shrink-0`}>
+            <Icon className="h-5 w-5 text-white" />
           </div>
-          <div className={`p-2 sm:p-2.5 rounded-xl ${color} shrink-0`}>
-            <Icon className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-          </div>
+          {sub && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}>
+              {sub}
+            </span>
+          )}
         </div>
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate mb-0.5">{label}</p>
+          <p className="text-xl sm:text-2xl font-bold text-slate-100 truncate">{value}</p>
+        </div>
       </CardContent>
     </Card>
   );
