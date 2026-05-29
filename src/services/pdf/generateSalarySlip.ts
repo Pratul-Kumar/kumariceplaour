@@ -1,117 +1,109 @@
-import { createPDFDocument, drawHeader, drawFooter, drawSignatures, drawTable } from "./pdfHelpers";
-import { formatCurrency, formatDate, formatMonth } from "@/lib/utils";
+import {
+  createPDFDocument, drawHeader, drawFooter, drawSignatures,
+  drawTable, drawSectionTitle, drawInfoGrid, drawStatCards, pdfCurrency, COLORS,
+} from "./pdfHelpers";
+import { formatDate, formatMonth } from "@/lib/utils";
 import type { SalaryRecord, Staff, SalaryPayment } from "@/types";
 
 export function generateSalarySlip(
-  staff: Staff, 
-  record: SalaryRecord, 
-  payments: SalaryPayment[], 
-  attendanceStats: { workingDays: number; presentDays: number; absentDays: number; leaveDays: number; halfDays: number }
+  staff: Staff,
+  record: SalaryRecord,
+  payments: SalaryPayment[],
+  attendanceStats: {
+    workingDays: number;
+    presentDays: number;
+    absentDays: number;
+    leaveDays: number;
+    halfDays: number;
+  }
 ) {
-  const doc = createPDFDocument(`Salary Slip - ${staff.name} - ${record.year}-${record.month}`);
-  let currentY = drawHeader(doc, "Salary Slip");
+  const monthStr = `${record.year}-${record.month.toString().padStart(2, "0")}`;
+  const monthLabel = formatMonth(monthStr);
 
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 15;
+  const doc = createPDFDocument(`Salary Slip - ${staff.name} - ${monthLabel}`);
+  let y = drawHeader(doc, "Salary Slip", monthLabel);
 
-  // Employee Details Section
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(15, 23, 42);
-  doc.text("EMPLOYEE DETAILS", margin, currentY);
-  currentY += 6;
+  // ── Employee Info ────────────────────────────────────────────────────────
+  y = drawSectionTitle(doc, y, "Employee Information");
+  y = drawInfoGrid(doc, y, [
+    { label: "Employee Name",  value: staff.name },
+    { label: "Role / Position", value: staff.role.toUpperCase() },
+    { label: "Salary Type",    value: staff.salaryType === "monthly" ? "Monthly Fixed" : "Daily Wage" },
+    { label: "Joining Date",   value: staff.joiningDate ? formatDate(staff.joiningDate) : "N/A" },
+    { label: "Phone",          value: staff.phone },
+    { label: "Salary Period",  value: monthLabel },
+  ], 2);
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(51, 65, 85);
-  doc.text(`Name: ${staff.name}`, margin, currentY);
-  doc.text(`Role: ${staff.role.toUpperCase()}`, pageWidth / 2, currentY);
-  currentY += 6;
-  doc.text(`Salary Type: ${staff.salaryType.toUpperCase()}`, margin, currentY);
-  doc.text(`Joining Date: ${formatDate(staff.joiningDate)}`, pageWidth / 2, currentY);
-  currentY += 10;
+  // ── Attendance Summary Stats ─────────────────────────────────────────────
+  y = drawSectionTitle(doc, y, "Attendance Summary");
+  y = drawStatCards(doc, y, [
+    { label: "Working Days",  value: attendanceStats.workingDays.toString(), color: COLORS.primary },
+    { label: "Present",       value: attendanceStats.presentDays.toString(),  color: COLORS.accent },
+    { label: "Absent",        value: attendanceStats.absentDays.toString(),   color: COLORS.danger },
+    { label: "Leaves Taken",  value: attendanceStats.leaveDays.toString(),    color: COLORS.warning },
+    { label: "Half Days",     value: attendanceStats.halfDays.toString(),      color: COLORS.muted },
+  ]);
 
-  // Salary Details Table
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(15, 23, 42);
-  doc.text(`SALARY DETAILS: ${formatMonth(`${record.year}-${record.month.toString().padStart(2, '0')}`).toUpperCase()}`, margin, currentY);
-  
-  const baseSalaryLabel = staff.salaryType === "monthly" ? "Monthly Salary" : "Daily Wage";
-  
-  const earnings = [
-    [baseSalaryLabel, formatCurrency(record.baseSalary)],
-    ["Bonus", formatCurrency(record.bonus)],
-    ["Overtime Amount", formatCurrency(record.overtime)],
-  ];
-  
-  const deductions = [
-    ["Leave Deduction", formatCurrency(record.leaveDeduction)],
-    ["Advance", formatCurrency(record.advance)],
-    ["Extra Deduction", formatCurrency(record.extraDeduction)],
+  // ── Earnings & Deductions Table ──────────────────────────────────────────
+  y = drawSectionTitle(doc, y, "Earnings & Deductions");
+
+  const baseSalaryLabel = staff.salaryType === "monthly" ? "Monthly Base Salary" : "Daily Wage (Earned)";
+  const tableHead = [["Earnings", "Amount (Rs.)", "Deductions", "Amount (Rs.)"]];
+  const tableBody = [
+    [baseSalaryLabel, pdfCurrency(record.baseSalary), "Leave Deduction",  pdfCurrency(record.leaveDeduction)],
+    ["Bonus",          pdfCurrency(record.bonus),      "Salary Advance",   pdfCurrency(record.advance)],
+    ["Overtime Pay",   pdfCurrency(record.overtime),   "Extra Deduction",  pdfCurrency(record.extraDeduction)],
   ];
 
-  currentY = drawTable(doc, currentY + 4, [["Earnings", "Amount"], ["Deductions", "Amount"]], [
-    [earnings[0][0], earnings[0][1], deductions[0][0], deductions[0][1]],
-    [earnings[1][0], earnings[1][1], deductions[1][0], deductions[1][1]],
-    [earnings[2][0], earnings[2][1], deductions[2][0], deductions[2][1]],
-  ], "grid");
+  y = drawTable(doc, y, tableHead, tableBody, "striped", {
+    0: { cellWidth: 52 },
+    1: { cellWidth: 38, halign: "right" },
+    2: { cellWidth: 52 },
+    3: { cellWidth: 38, halign: "right" },
+  });
 
-  // Summary Table
+  // ── Financial Summary ────────────────────────────────────────────────────
+  y = drawSectionTitle(doc, y, "Salary Summary");
+
   const previousPending = record.previousDue || 0;
-  const totalPayable = record.finalSalary + previousPending;
-  const totalPaid = record.totalPaid;
-  const remaining = record.remainingDue;
+  const totalPayable    = record.finalSalary + previousPending;
+  const remaining       = record.remainingDue;
 
-  const summaryData = [
-    ["Previous Pending Balance", formatCurrency(previousPending)],
-    ["Net Salary (This Month)", formatCurrency(record.finalSalary)],
-    ["Total Payable", formatCurrency(totalPayable)],
-    ["Total Paid", formatCurrency(totalPaid)],
-    ["Remaining Balance", formatCurrency(remaining)],
-  ];
+  y = drawStatCards(doc, y, [
+    { label: "Net Salary",       value: pdfCurrency(record.finalSalary), color: COLORS.primary },
+    { label: "Prev. Pending",    value: pdfCurrency(previousPending),    color: COLORS.warning },
+    { label: "Total Payable",    value: pdfCurrency(totalPayable),       color: COLORS.primaryDark },
+    { label: "Total Paid",       value: pdfCurrency(record.totalPaid),   color: COLORS.accent },
+    { label: "Balance Due",      value: pdfCurrency(remaining),          color: remaining > 0 ? COLORS.danger : COLORS.accent },
+  ]);
 
-  currentY = drawTable(doc, currentY, [["Summary", "Amount"]], summaryData, "grid");
-
-  // Attendance Summary
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(15, 23, 42);
-  doc.text("ATTENDANCE SUMMARY", margin, currentY);
-  
-  currentY = drawTable(doc, currentY + 4, 
-    [["Working Days", "Present", "Absent", "Leaves", "Half Days"]],
-    [[
-      attendanceStats.workingDays.toString(), 
-      attendanceStats.presentDays.toString(), 
-      attendanceStats.absentDays.toString(), 
-      attendanceStats.leaveDays.toString(), 
-      attendanceStats.halfDays.toString()
-    ]], 
-    "striped"
-  );
-
-  // Payment History
+  // ── Payment History ──────────────────────────────────────────────────────
   if (payments && payments.length > 0) {
-    doc.setFont("helvetica", "bold");
-    doc.text("PAYMENT HISTORY", margin, currentY);
-    
-    const paymentData = payments.map(p => [
-      formatDate(p.paymentDate), 
-      p.paymentMethod, 
-      formatCurrency(p.amountPaid), 
-      p.note || "-"
+    y = drawSectionTitle(doc, y, "Payment History");
+
+    const paymentBody = payments.map((p) => [
+      formatDate(p.paymentDate),
+      p.paymentMethod.toUpperCase(),
+      pdfCurrency(p.amountPaid),
+      p.note || "-",
     ]);
-    
-    currentY = drawTable(doc, currentY + 4, 
-      [["Date", "Method", "Amount", "Note"]], 
-      paymentData, 
-      "striped"
+
+    y = drawTable(
+      doc, y,
+      [["Payment Date", "Method", "Amount Paid", "Note"]],
+      paymentBody,
+      "striped",
+      {
+        0: { cellWidth: 38 },
+        1: { cellWidth: 32 },
+        2: { cellWidth: 38, halign: "right" },
+        3: { cellWidth: "auto" },
+      }
     );
   }
 
-  drawSignatures(doc, currentY + 20);
+  drawSignatures(doc, y + 10, ["Authorized Signatory", "Employee Signature"]);
   drawFooter(doc);
 
-  doc.save(`Salary_Slip_${staff.name}_${record.month}.pdf`);
+  doc.save(`Salary_Slip_${staff.name.replace(/\s+/g, "_")}_${monthStr}.pdf`);
 }

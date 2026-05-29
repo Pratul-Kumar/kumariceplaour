@@ -1,75 +1,73 @@
-import { createPDFDocument, drawHeader, drawFooter, drawTable } from "./pdfHelpers";
-import { formatCurrency, formatMonth } from "@/lib/utils";
+import {
+  createPDFDocument, drawHeader, drawFooter,
+  drawTable, drawSectionTitle, drawStatCards, pdfCurrency, COLORS,
+} from "./pdfHelpers";
+import { formatMonth } from "@/lib/utils";
 import type { SalaryRecord, Staff } from "@/types";
 
 export function generateMonthlySalaryReport(month: string, records: SalaryRecord[], staffList: Staff[]) {
-  const doc = createPDFDocument(`Monthly Salary Report - ${month}`, "l"); // Landscape for more columns
-  let currentY = drawHeader(doc, `Monthly Salary Report: ${formatMonth(month)}`);
+  const doc = createPDFDocument(`Monthly Salary Report - ${month}`, "l");
+  let y = drawHeader(doc, "Monthly Salary Report", formatMonth(month));
 
+  // ── Aggregate Totals ─────────────────────────────────────────────────────
   let totalExpense = 0;
-  let totalPaid = 0;
+  let totalPaid    = 0;
   let totalPending = 0;
 
-  const tableData = records.map(record => {
-    const staff = staffList.find(s => s.id === record.staffId);
-    
+  const tableData = records.map((record) => {
+    const staff = staffList.find((s) => s.id === record.staffId);
     const previousPending = record.previousDue || 0;
-    const totalPayable = record.finalSalary + previousPending;
-    const paid = record.totalPaid;
-    const remaining = record.remainingDue;
+    const totalPayable    = record.finalSalary + previousPending;
+    const paid            = record.totalPaid;
+    const remaining       = record.remainingDue;
+    const deductions      = record.leaveDeduction + record.advance + record.extraDeduction;
 
     totalExpense += record.finalSalary;
-    totalPaid += paid;
+    totalPaid    += paid;
     totalPending += remaining;
-
-    const deductions = record.leaveDeduction + record.advance + record.extraDeduction;
 
     return [
       staff?.name || "Unknown",
-      staff?.role.toUpperCase() || "-",
-      staff?.salaryType.toUpperCase() || "-",
-      formatCurrency(record.baseSalary),
-      formatCurrency(record.bonus),
-      formatCurrency(deductions),
-      formatCurrency(record.finalSalary),
-      formatCurrency(paid),
-      formatCurrency(remaining),
-      record.status.toUpperCase()
+      (staff?.role || "-").toUpperCase(),
+      record.baseSalary > 0 ? pdfCurrency(record.baseSalary) : "-",
+      record.bonus > 0      ? pdfCurrency(record.bonus)      : "-",
+      deductions > 0        ? pdfCurrency(deductions)         : "-",
+      pdfCurrency(record.finalSalary),
+      pdfCurrency(paid),
+      pdfCurrency(remaining),
+      record.status.toUpperCase(),
     ];
   });
 
-  const margin = 15;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(15, 23, 42);
-  
-  // Summary boxes
-  const summaryBoxWidth = 60;
-  const boxY = currentY;
-  
-  doc.setFillColor(241, 245, 249); // slate-100
-  doc.rect(margin, boxY, summaryBoxWidth, 20, "F");
-  doc.text("Total Salary Expense", margin + 5, boxY + 8);
-  doc.setTextColor(16, 185, 129); // emerald-500
-  doc.text(formatCurrency(totalExpense), margin + 5, boxY + 15);
+  // ── Summary Stat Cards ───────────────────────────────────────────────────
+  y = drawSectionTitle(doc, y, "Payroll Summary");
+  y = drawStatCards(doc, y, [
+    { label: "Total Employees",   value: records.length.toString(),    color: COLORS.primary },
+    { label: "Total Salary Bill", value: pdfCurrency(totalExpense),    color: COLORS.primaryDark },
+    { label: "Total Paid",        value: pdfCurrency(totalPaid),       color: COLORS.accent },
+    { label: "Total Pending",     value: pdfCurrency(totalPending),    color: COLORS.danger },
+    { label: "Paid %",            value: totalExpense > 0 ? `${Math.round((totalPaid / totalExpense) * 100)}%` : "0%", color: COLORS.warning },
+  ]);
 
-  doc.setTextColor(15, 23, 42);
-  doc.rect(margin + summaryBoxWidth + 10, boxY, summaryBoxWidth, 20, "F");
-  doc.text("Total Paid", margin + summaryBoxWidth + 15, boxY + 8);
-  doc.setTextColor(59, 130, 246); // blue-500
-  doc.text(formatCurrency(totalPaid), margin + summaryBoxWidth + 15, boxY + 15);
+  // ── Detailed Table ───────────────────────────────────────────────────────
+  y = drawSectionTitle(doc, y, "Staff Payroll Breakdown");
 
-  doc.setTextColor(15, 23, 42);
-  doc.rect(margin + (summaryBoxWidth + 10) * 2, boxY, summaryBoxWidth, 20, "F");
-  doc.text("Total Pending", margin + (summaryBoxWidth + 10) * 2 + 5, boxY + 8);
-  doc.setTextColor(244, 63, 94); // rose-500
-  doc.text(formatCurrency(totalPending), margin + (summaryBoxWidth + 10) * 2 + 5, boxY + 15);
+  const head = [[
+    "Staff Name", "Role", "Base Salary", "Bonus",
+    "Deductions", "Net Salary", "Paid", "Pending", "Status"
+  ]];
 
-  currentY += 28;
-
-  const head = [["Staff Name", "Role", "Type", "Base", "Bonus", "Deductions", "Final Salary", "Paid", "Remaining", "Status"]];
-  
-  currentY = drawTable(doc, currentY, head, tableData, "striped");
+  y = drawTable(doc, y, head, tableData, "striped", {
+    0: { cellWidth: 38 },
+    1: { cellWidth: 26 },
+    2: { cellWidth: 28, halign: "right" },
+    3: { cellWidth: 22, halign: "right" },
+    4: { cellWidth: 28, halign: "right" },
+    5: { cellWidth: 28, halign: "right", fontStyle: "bold" },
+    6: { cellWidth: 24, halign: "right" },
+    7: { cellWidth: 24, halign: "right" },
+    8: { cellWidth: 22, halign: "center" },
+  });
 
   drawFooter(doc);
   doc.save(`Monthly_Salary_Report_${month}.pdf`);
