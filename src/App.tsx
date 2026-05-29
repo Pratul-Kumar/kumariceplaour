@@ -21,7 +21,7 @@ const HistoryReports = lazy(() => import("@/pages/HistoryReports").then(m => ({ 
 const FullPageLoader = ({ message = "Connecting to Cloud..." }: { message?: string }) => (
   <div className="h-screen w-full flex items-center justify-center bg-background">
     <div className="flex flex-col items-center gap-3">
-      <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center shadow-lg border border-border/50">
+      <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg">
         <img src="/logo.png" alt="Logo" className="w-12 h-12 object-contain" />
       </div>
       <Loader2 className="h-6 w-6 animate-spin text-primary" />

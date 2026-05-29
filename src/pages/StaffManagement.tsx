@@ -98,7 +98,7 @@ export function StaffManagement() {
         }
       }
 
-      const payload = {
+      const rawPayload = {
         name: data.name,
         role: finalRole,
         phone: data.phone,
@@ -107,9 +107,14 @@ export function StaffManagement() {
         dailyWage: data.dailyWage,
         joiningDate: data.joiningDate || new Date().toISOString().split("T")[0],
         allowedCasualLeavesPerMonth: data.allowedCasualLeavesPerMonth,
-        note: data.note,
-        address: data.address,
+        note: data.note || "",
+        address: data.address || "",
       };
+
+      // Remove any undefined/null-ish values Firestore cannot handle
+      const payload = Object.fromEntries(
+        Object.entries(rawPayload).filter(([, v]) => v !== undefined && v !== null)
+      ) as typeof rawPayload;
 
       if (editItem?.id) {
         await staffService.update(editItem.id, payload);
