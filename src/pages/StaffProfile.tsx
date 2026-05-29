@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Phone, Calendar, IndianRupee, Award } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, Badge, Skeleton, Button } from "@/components/ui";
-import { staffService, salaryService, leaveService, attendanceService } from "@/services";
-import { type Staff, type SalaryRecord, type LeaveRecord, type Attendance } from "@/types";
+import { staffService, salaryService, leaveService, attendanceService, advanceService } from "@/services";
+import { type Staff, type SalaryRecord, type LeaveRecord, type Attendance, type AdvanceRecord } from "@/types";
 import { formatCurrency, formatDate, formatMonth, getInitials, generateAvatarColor } from "@/lib/utils";
 
 export function StaffProfile() {
@@ -12,9 +12,10 @@ export function StaffProfile() {
   const [staff, setStaff] = useState<Staff | null>(null);
   const [salaryHistory, setSalaryHistory] = useState<SalaryRecord[]>([]);
   const [leaveHistory, setLeaveHistory] = useState<LeaveRecord[]>([]);
+  const [advanceHistory, setAdvanceHistory] = useState<AdvanceRecord[]>([]);
   const [currentMonthAtt, setCurrentMonthAtt] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"salary" | "leave" | "attendance">("salary");
+  const [tab, setTab] = useState<"salary" | "leave" | "attendance" | "advance">("salary");
 
   useEffect(() => {
     if (!id) return;
@@ -44,6 +45,9 @@ export function StaffProfile() {
     });
     leaveService.getByStaff(staffId).then((lv) => {
       if (active) setLeaveHistory(lv);
+    });
+    advanceService.getByStaff(staffId).then((adv) => {
+      if (active) setAdvanceHistory(adv);
     });
 
     return () => {
@@ -146,10 +150,10 @@ export function StaffProfile() {
       </Card>
 
       {/* Tabs */}
-      <div className="flex rounded-xl bg-muted p-1 gap-1">
-        {(["salary", "leave", "attendance"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`flex-1 py-2 text-sm font-medium rounded-lg capitalize transition-all ${tab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
-            {t === "salary" ? "💰 Salary" : t === "leave" ? "🏖️ Leave" : "📋 Attendance"}
+      <div className="flex flex-wrap rounded-xl bg-muted p-1 gap-1">
+        {(["salary", "leave", "attendance", "advance"] as const).map((t) => (
+          <button key={t} onClick={() => setTab(t)} className={`flex-1 min-w-[100px] py-2 text-sm font-medium rounded-lg capitalize transition-all ${tab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+            {t === "salary" ? "💰 Salary" : t === "leave" ? "🏖️ Leave" : t === "attendance" ? "📋 Attendance" : "💸 Advances"}
           </button>
         ))}
       </div>
@@ -240,6 +244,36 @@ export function StaffProfile() {
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Advance History */}
+      {tab === "advance" && (
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Advances & Deductions</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            {advanceHistory.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8 text-sm">No advance records yet</p>
+            ) : (
+              <div className="divide-y divide-border">
+                {advanceHistory.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between px-5 py-4">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{formatDate(a.date)}</p>
+                      {a.reason && <p className="text-xs text-muted-foreground/70 italic mt-0.5">{a.reason}</p>}
+                      {a.status === "deducted" && a.deductedInMonth && (
+                        <p className="text-xs text-emerald-400 mt-1">Recovered in {formatMonth(a.deductedInMonth)}</p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-foreground">{formatCurrency(a.amount)}</p>
+                      <Badge variant={a.status === "deducted" ? "success" : "warning"}>{a.status}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

@@ -1,7 +1,7 @@
 import { memo } from "react";
 import {
   AreaChart, Area, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer
+  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
 } from "recharts";
 import { Clock, ArrowUpRight, AlertCircle, IndianRupee, CalendarOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, Skeleton, Badge, EmptyState } from "@/components/ui";
@@ -26,9 +26,9 @@ const CustomTooltip = memo(function CustomTooltip({
 }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="glass px-4 py-3 rounded-xl shadow-2xl" style={{ border: "1px solid rgba(255,255,255,0.12)" }}>
-      <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1">{label}</p>
-      <p className="text-base font-bold text-white text-gradient">{formatCurrency(payload[0].value)}</p>
+    <div className="glass px-4 py-3 rounded-xl shadow-2xl" style={{ border: "1px solid var(--glass-border)", backgroundColor: "var(--popover)" }}>
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">{label}</p>
+      <p className="text-base font-bold text-foreground text-gradient">{formatCurrency(payload[0].value)}</p>
     </div>
   );
 });
@@ -40,7 +40,7 @@ export default function DashboardCharts({ stats, loading, pieData, EXPENSE_CATEG
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         {/* Monthly Trend */}
         <Card className="lg:col-span-2 glass-card">
-          <CardHeader className="pb-2 border-b border-white/5">
+          <CardHeader className="pb-2 border-b border-glass-border">
             <CardTitle className="flex items-center gap-2 text-sm">
               <div className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400">
                 <ArrowUpRight className="h-4 w-4" />
@@ -62,7 +62,7 @@ export default function DashboardCharts({ stats, loading, pieData, EXPENSE_CATEG
                   </defs>
                   <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} dy={10} />
                   <YAxis tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} tickFormatter={(v) => `Rs.${(v / 1000).toFixed(0)}k`} dx={-10} />
-                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'var(--glass-border)', strokeWidth: 1, strokeDasharray: '4 4' }} />
                   <Area type="monotone" dataKey="amount" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorAmt)" activeDot={{ r: 6, fill: '#6366f1', stroke: '#fff', strokeWidth: 2 }} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -72,7 +72,7 @@ export default function DashboardCharts({ stats, loading, pieData, EXPENSE_CATEG
 
         {/* Category Breakdown Pie */}
         <Card className="glass-card">
-          <CardHeader className="pb-2 border-b border-white/5">
+          <CardHeader className="pb-2 border-b border-glass-border">
             <CardTitle className="flex items-center gap-2 text-sm">
               <div className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400">
                 <span className="h-4 w-4 flex items-center justify-center font-bold">📊</span>
@@ -84,16 +84,17 @@ export default function DashboardCharts({ stats, loading, pieData, EXPENSE_CATEG
             {loading ? (
               <Skeleton className="h-56 w-full" />
             ) : pieData.length === 0 ? (
-              <div className="h-56 flex items-center justify-center text-sm text-slate-500">No expenses this month</div>
+              <div className="h-56 flex items-center justify-center text-sm text-muted-foreground">No expenses this month</div>
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={65} outerRadius={85} paddingAngle={6} dataKey="value" stroke="rgba(255,255,255,0.05)" strokeWidth={2}>
+                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={75} paddingAngle={6} dataKey="value" stroke="var(--glass-bg)" strokeWidth={2}>
                     {pieData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} style={{ filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))' }} />
                     ))}
                   </Pie>
                   <Tooltip content={<CustomTooltip />} />
+                  <Legend iconSize={8} iconType="circle" formatter={(v) => <span style={{ fontSize: 11, color: "#cbd5e1", fontWeight: 600 }}>{v}</span>} />
                 </PieChart>
               </ResponsiveContainer>
             )}
@@ -106,7 +107,7 @@ export default function DashboardCharts({ stats, loading, pieData, EXPENSE_CATEG
         
         {/* Recent Expenses */}
         <Card className="glass-card">
-          <CardHeader className="border-b border-white/5">
+          <CardHeader className="border-b border-glass-border">
             <CardTitle className="flex items-center gap-2 text-sm">
               <div className="p-1.5 rounded-lg bg-rose-500/20 text-rose-400">
                 <Clock className="h-4 w-4" />
@@ -126,13 +127,13 @@ export default function DashboardCharts({ stats, loading, pieData, EXPENSE_CATEG
                 {stats.recentExpenses.map((exp) => {
                   const cat = EXPENSE_CATEGORIES.find((c) => c.value === exp.category) || EXPENSE_CATEGORIES[0];
                   return (
-                    <div key={exp.id} className="flex items-center gap-4 p-4 hover:bg-white/[0.02] transition-colors group cursor-default">
+                    <div key={exp.id} className="flex items-center gap-4 p-4 hover:bg-glass-bg transition-colors group cursor-default">
                       <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 transition-transform duration-300 group-hover:scale-110" style={{ backgroundColor: `${cat.color}15`, border: `1px solid ${cat.color}30`, boxShadow: `0 0 20px ${cat.color}10` }}>
                         {cat.icon}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-slate-100 truncate mb-0.5 group-hover:text-white transition-colors">{exp.title}</p>
-                        <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">{cat.label} • {formatDate(exp.date)}</p>
+                        <p className="text-sm font-bold text-foreground truncate mb-0.5 group-hover:text-white transition-colors">{exp.title}</p>
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{cat.label} • {formatDate(exp.date)}</p>
                       </div>
                       <p className="text-sm font-bold text-rose-400 shrink-0 tabular-nums bg-rose-500/10 px-2.5 py-1 rounded-lg border border-rose-500/20">
                         -{formatCurrency(exp.amount)}
@@ -145,64 +146,6 @@ export default function DashboardCharts({ stats, loading, pieData, EXPENSE_CATEG
           </CardContent>
         </Card>
 
-        {/* Alerts & Actions */}
-        <Card className="glass-card">
-          <CardHeader className="border-b border-white/5">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
-                <AlertCircle className="h-4 w-4" />
-              </div>
-              System Alerts
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-5">
-            <div className="space-y-4">
-              {stats.pendingSalary > 0 && (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-amber-500/20 bg-amber-500/10 relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-amber-500/0 via-amber-500/5 to-amber-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-                  <div className="flex items-center gap-3 mb-3 sm:mb-0 relative z-10">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center border border-amber-500/30 text-amber-400">
-                      <IndianRupee className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-amber-400">Pending Salary</p>
-                      <p className="text-xs text-amber-500/70 mt-0.5">Clear outstanding employee dues</p>
-                    </div>
-                  </div>
-                  <Badge variant="warning" className="relative z-10 sm:self-center self-start text-sm px-3 py-1 bg-amber-500/20">{formatCurrency(stats.pendingSalary)}</Badge>
-                </div>
-              )}
-
-              {stats.todayLeaves > 0 && (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-pink-500/20 bg-pink-500/10 relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-pink-500/0 via-pink-500/5 to-pink-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-                  <div className="flex items-center gap-3 mb-3 sm:mb-0 relative z-10">
-                    <div className="w-10 h-10 rounded-xl bg-pink-500/20 flex items-center justify-center border border-pink-500/30 text-pink-400">
-                      <CalendarOff className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-pink-400">Staff on Leave</p>
-                      <p className="text-xs text-pink-500/70 mt-0.5">Employees absent today</p>
-                    </div>
-                  </div>
-                  <Badge className="relative z-10 sm:self-center self-start text-sm px-3 py-1 bg-pink-500 text-white border-none shadow-[0_0_15px_rgba(236,72,153,0.5)]">
-                    {stats.todayLeaves} Absent
-                  </Badge>
-                </div>
-              )}
-
-              {stats.pendingSalary === 0 && stats.todayLeaves === 0 && (
-                <div className="flex flex-col items-center justify-center py-10 text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-4">
-                    <span className="text-3xl filter drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">🎉</span>
-                  </div>
-                  <p className="text-sm font-bold text-emerald-400">All caught up!</p>
-                  <p className="text-xs text-slate-500 mt-1">No pending alerts for today.</p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </>
   );

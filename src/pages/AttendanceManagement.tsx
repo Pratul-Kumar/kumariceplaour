@@ -36,7 +36,7 @@ const DailyStaffCard = memo(function DailyStaffCard({
 }) {
   const cfg = status ? STATUS_CONFIG[status] : null;
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden glass-card">
       <CardContent className="p-4">
         {/* Staff info row */}
         <div className="flex items-center gap-3 mb-4">
@@ -45,14 +45,14 @@ const DailyStaffCard = memo(function DailyStaffCard({
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-foreground truncate">{staff.name}</p>
-            <p className="text-xs text-muted-foreground">{staff.role || "Staff"}</p>
+            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">{staff.role || "Staff"}</p>
           </div>
           {cfg ? (
-            <Badge variant="outline" className={cn("border-0 text-xs font-semibold px-2.5 py-1 shrink-0", cfg.bg, cfg.text)}>
+            <Badge variant="outline" className={cn("border-0 text-[10px] uppercase font-bold tracking-widest px-3 py-1 shrink-0", cfg.bg, cfg.text)}>
               {cfg.label}
             </Badge>
           ) : (
-            <Badge variant="outline" className="text-xs px-2.5 py-1 shrink-0 text-muted-foreground">
+            <Badge variant="outline" className="text-[10px] uppercase font-bold tracking-widest px-3 py-1 shrink-0 text-muted-foreground border-glass-border">
               Not marked
             </Badge>
           )}
@@ -67,13 +67,13 @@ const DailyStaffCard = memo(function DailyStaffCard({
                 key={key}
                 onClick={() => onSet(staff.id!, selectedDate, key)}
                 className={cn(
-                  "h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95 select-none touch-manipulation",
+                  "h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95 select-none touch-manipulation border",
                   isActive
-                    ? `${c.bg} ${c.text} ring-2 ${c.ring} ring-offset-1 ring-offset-background shadow-sm`
-                    : "bg-muted/70 text-muted-foreground"
+                    ? `${c.bg} ${c.text} border-transparent shadow-[0_0_15px_rgba(255,255,255,0.1)] scale-105`
+                    : "bg-glass-bg text-muted-foreground border-glass-border hover:bg-glass-bg"
                 )}
               >
-                <span className="text-base font-bold leading-none">{c.short}</span>
+                <span className="text-lg font-bold leading-none">{c.short}</span>
               </button>
             );
           })}
@@ -82,10 +82,10 @@ const DailyStaffCard = memo(function DailyStaffCard({
             onClick={() => onSet(staff.id!, selectedDate, "clear")}
             disabled={!status}
             className={cn(
-              "h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95 touch-manipulation",
+              "h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95 touch-manipulation border",
               status
-                ? "bg-muted/70 text-muted-foreground hover:bg-red-500/10 hover:text-red-500"
-                : "opacity-30 pointer-events-none bg-muted/30"
+                ? "bg-glass-bg text-muted-foreground border-glass-border hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30"
+                : "opacity-30 pointer-events-none bg-black/20 border-glass-border"
             )}
           >
             <Trash2 className="h-4 w-4" />
@@ -357,7 +357,7 @@ export function AttendanceManagement() {
 
                 {/* Calendar Card */}
                 {selectedStaffId && (
-                  <Card className="overflow-hidden border-0 shadow-md rounded-3xl bg-card">
+                  <Card className="overflow-hidden glass-card rounded-3xl">
                     <CardContent className="p-5 sm:p-6">
                       {/* Header: Month & Year */}
                       <div className="flex items-center justify-between mb-6">
@@ -367,13 +367,13 @@ export function AttendanceManagement() {
                         <div className="flex gap-2">
                           <button
                             onClick={() => navigateMonth(-1)}
-                            className="h-10 w-10 shrink-0 flex items-center justify-center rounded-full border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95 shadow-sm"
+                            className="h-10 w-10 shrink-0 flex items-center justify-center rounded-full bg-glass-bg border border-glass-border hover:bg-glass-bg transition-colors touch-manipulation active:scale-95 shadow-sm text-foreground"
                           >
                             <ChevronLeft className="h-5 w-5" />
                           </button>
                           <button
                             onClick={() => navigateMonth(1)}
-                            className="h-10 w-10 shrink-0 flex items-center justify-center rounded-full border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95 shadow-sm"
+                            className="h-10 w-10 shrink-0 flex items-center justify-center rounded-full bg-glass-bg border border-glass-border hover:bg-glass-bg transition-colors touch-manipulation active:scale-95 shadow-sm text-foreground"
                           >
                             <ChevronRight className="h-5 w-5" />
                           </button>
@@ -384,7 +384,7 @@ export function AttendanceManagement() {
                       <div className="grid grid-cols-7 gap-y-4 gap-x-2">
                         {/* Weekday Headers */}
                         {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
-                          <div key={day} className="text-center text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                          <div key={day} className="text-center text-xs font-bold text-muted-foreground uppercase tracking-widest">
                             {day}
                           </div>
                         ))}
@@ -408,10 +408,10 @@ export function AttendanceManagement() {
                                 className={cn(
                                   "relative z-10 flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full transition-all active:scale-90 touch-manipulation select-none",
                                   cfg
-                                    ? `${cfg.bg} ${cfg.text} shadow-sm`
+                                    ? `${cfg.bg} ${cfg.text} shadow-[0_0_15px_var(--glass-bg)] border border-transparent`
                                     : isToday
-                                      ? "bg-primary/10 text-primary ring-2 ring-primary ring-offset-2 ring-offset-background font-bold"
-                                      : "bg-transparent text-foreground hover:bg-muted"
+                                      ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.3)] font-bold"
+                                      : "bg-transparent text-foreground hover:bg-glass-bg border border-transparent"
                                 )}
                               >
                                 <span className={cn(
@@ -437,9 +437,9 @@ export function AttendanceManagement() {
                       let count = 0;
                       Object.values(st).forEach(v => { if (v === key) count++; });
                       return (
-                        <div key={key} className={cn("p-3 rounded-2xl flex flex-col items-center justify-center gap-1 shadow-sm", cfg.bg)}>
-                          <span className={cn("text-lg font-bold leading-none", cfg.text)}>{count}</span>
-                          <span className={cn("text-[10px] font-bold uppercase tracking-wider", cfg.text, "opacity-80")}>{cfg.short}</span>
+                        <div key={key} className={cn("p-4 rounded-2xl flex flex-col items-center justify-center gap-1.5 border shadow-[0_0_15px_rgba(255,255,255,0.02)]", cfg.bg, cfg.bg.replace('/20', '/30').replace('bg-', 'border-'))}>
+                          <span className={cn("text-2xl font-bold leading-none", cfg.text)}>{count}</span>
+                          <span className={cn("text-[10px] font-bold uppercase tracking-widest", cfg.text, "opacity-80")}>{cfg.short}</span>
                         </div>
                       );
                     })}
@@ -448,40 +448,40 @@ export function AttendanceManagement() {
               </div>
 
               {/* Desktop: full table */}
-              <Card className="hidden md:block overflow-hidden border-border shadow-sm">
+              <Card className="hidden md:block overflow-hidden glass-card">
                 <div className="overflow-x-auto">
-                  <div className="p-4 bg-muted/50 border-b flex justify-between items-center">
+                  <div className="p-4 border-b border-glass-border flex justify-between items-center">
                     <h3 className="font-semibold text-foreground">Attendance Grid</h3>
                     <div className="flex gap-2">
-                      <button onClick={() => navigateMonth(-1)} className="h-8 w-8 flex items-center justify-center rounded border bg-background hover:bg-accent"><ChevronLeft className="h-4 w-4" /></button>
-                      <span className="px-3 py-1 font-medium">{format(parseISO(`${month}-01`), "MMMM yyyy")}</span>
-                      <button onClick={() => navigateMonth(1)} className="h-8 w-8 flex items-center justify-center rounded border bg-background hover:bg-accent"><ChevronRight className="h-4 w-4" /></button>
+                      <button onClick={() => navigateMonth(-1)} className="h-8 w-8 flex items-center justify-center rounded-lg bg-glass-bg border border-glass-border hover:bg-glass-bg text-foreground"><ChevronLeft className="h-4 w-4" /></button>
+                      <span className="px-4 py-1.5 font-bold text-sm bg-glass-bg rounded-lg border border-glass-border text-foreground">{format(parseISO(`${month}-01`), "MMMM yyyy")}</span>
+                      <button onClick={() => navigateMonth(1)} className="h-8 w-8 flex items-center justify-center rounded-lg bg-glass-bg border border-glass-border hover:bg-glass-bg text-foreground"><ChevronRight className="h-4 w-4" /></button>
                     </div>
                   </div>
                   <table className="w-full text-sm text-left border-collapse" style={{ minWidth: `${120 + daysInMonth * 34 + 160}px` }}>
                     <thead>
-                      <tr className="bg-muted/50 border-b border-border">
-                        <th className="px-4 py-3 font-semibold text-foreground whitespace-nowrap sticky left-0 z-10 bg-muted/95 backdrop-blur shadow-[1px_0_0_0_theme(colors.border)]">
+                      <tr className="border-b border-glass-border">
+                        <th className="px-4 py-3 font-bold text-muted-foreground text-xs uppercase tracking-widest whitespace-nowrap sticky left-0 z-10 bg-[#0F1322] border-r border-glass-border shadow-[5px_0_15px_rgba(0,0,0,0.5)]">
                           Staff Name
                         </th>
                         {days.map((date, i) => {
                           const isToday = date === new Date().toISOString().split("T")[0];
                           return (
                             <th key={date} className={cn(
-                              "px-1.5 py-3 font-semibold text-center min-w-[32px] border-l border-border/50 text-xs",
-                              isToday ? "text-primary bg-primary/5" : "text-muted-foreground"
+                              "px-1.5 py-3 font-bold text-center min-w-[32px] border-l border-glass-border text-xs",
+                              isToday ? "text-indigo-400 bg-indigo-500/10" : "text-muted-foreground"
                             )}>
                               {i + 1}
                             </th>
                           );
                         })}
-                        <th className="px-3 py-3 font-semibold text-center text-emerald-600 border-l border-border bg-emerald-500/5 min-w-[36px]">P</th>
-                        <th className="px-3 py-3 font-semibold text-center text-red-600 bg-red-500/5 min-w-[36px]">A</th>
-                        <th className="px-3 py-3 font-semibold text-center text-amber-600 bg-amber-500/5 min-w-[36px]">H</th>
-                        <th className="px-3 py-3 font-semibold text-center text-blue-600 bg-blue-500/5 min-w-[36px]">L</th>
+                        <th className="px-3 py-3 font-bold text-xs uppercase tracking-widest text-center text-emerald-500 border-l border-glass-border bg-emerald-500/10 min-w-[36px]">P</th>
+                        <th className="px-3 py-3 font-bold text-xs uppercase tracking-widest text-center text-red-500 bg-red-500/10 min-w-[36px]">A</th>
+                        <th className="px-3 py-3 font-bold text-xs uppercase tracking-widest text-center text-amber-500 bg-amber-500/10 min-w-[36px]">H</th>
+                        <th className="px-3 py-3 font-bold text-xs uppercase tracking-widest text-center text-blue-500 bg-blue-500/10 min-w-[36px]">L</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border">
+                    <tbody className="divide-y divide-white/5">
                       {staff.map(s => {
                         const staffAtt = attendanceMap[s.id!] || {};
                         let p = 0, a = 0, h = 0, l = 0;
@@ -493,25 +493,25 @@ export function AttendanceManagement() {
                           else if (st === "leave") l++;
                         });
                         return (
-                          <tr key={s.id} className="hover:bg-accent/50 transition-colors group">
-                            <td className="px-4 py-2 whitespace-nowrap sticky left-0 z-10 bg-card group-hover:bg-accent/95 shadow-[1px_0_0_0_theme(colors.border)] transition-colors">
-                              <div className="flex items-center gap-2">
-                                <div className={`w-6 h-6 rounded-md bg-gradient-to-br ${generateAvatarColor(s.name)} flex items-center justify-center text-white text-[10px] font-bold shrink-0`}>
+                          <tr key={s.id} className="hover:bg-glass-bg transition-colors group">
+                            <td className="px-4 py-2 whitespace-nowrap sticky left-0 z-10 bg-[#0F1322] border-r border-glass-border group-hover:bg-[#13182B] shadow-[5px_0_15px_rgba(0,0,0,0.5)] transition-colors">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${generateAvatarColor(s.name)} flex items-center justify-center text-white text-[10px] font-bold shrink-0 shadow-lg`}>
                                   {getInitials(s.name)}
                                 </div>
-                                <span className="font-medium text-foreground">{s.name}</span>
+                                <span className="font-semibold text-foreground">{s.name}</span>
                               </div>
                             </td>
                             {days.map(date => {
                               const status = staffAtt[date];
                               const cfg = status ? STATUS_CONFIG[status] : null;
                               return (
-                                <td key={date} className="px-[2px] py-1 border-l border-border/50">
+                                <td key={date} className="px-[2px] py-1 border-l border-glass-border">
                                   <button
                                     onClick={() => handleCellClick(s.id!, date, status)}
                                     className={cn(
-                                      "w-full h-8 flex items-center justify-center rounded text-xs font-bold transition-all cursor-pointer select-none",
-                                      cfg ? `${cfg.bg} ${cfg.text} hover:opacity-80 shadow-sm` : "bg-transparent text-muted-foreground hover:bg-muted"
+                                      "w-full h-8 flex items-center justify-center rounded-lg text-xs font-bold transition-all cursor-pointer select-none",
+                                      cfg ? `${cfg.bg} ${cfg.text} hover:opacity-80 shadow-[0_0_10px_rgba(255,255,255,0.02)]` : "bg-transparent text-muted-foreground hover:bg-glass-bg hover:text-muted-foreground"
                                     )}
                                   >
                                     {cfg ? cfg.short : "·"}
@@ -519,10 +519,10 @@ export function AttendanceManagement() {
                                 </td>
                               );
                             })}
-                            <td className="px-3 py-2 text-center font-bold text-emerald-600 border-l border-border bg-emerald-500/5">{p}</td>
-                            <td className="px-3 py-2 text-center font-bold text-red-600 bg-red-500/5">{a}</td>
-                            <td className="px-3 py-2 text-center font-bold text-amber-600 bg-amber-500/5">{h}</td>
-                            <td className="px-3 py-2 text-center font-bold text-blue-600 bg-blue-500/5">{l}</td>
+                            <td className="px-3 py-2 text-center font-bold text-emerald-400 border-l border-glass-border bg-emerald-500/5">{p}</td>
+                            <td className="px-3 py-2 text-center font-bold text-red-400 bg-red-500/5">{a}</td>
+                            <td className="px-3 py-2 text-center font-bold text-amber-400 bg-amber-500/5">{h}</td>
+                            <td className="px-3 py-2 text-center font-bold text-blue-400 bg-blue-500/5">{l}</td>
                           </tr>
                         );
                       })}

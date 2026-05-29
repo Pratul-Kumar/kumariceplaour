@@ -10,8 +10,8 @@ import {
 import { Button, Input, Card, CardContent, Badge, EmptyState, Spinner, Skeleton } from "@/components/ui";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { staffService, salaryService, attendanceService } from "@/services";
-import { type Staff, type SalaryRecord, type SalaryPayment, calculateSalary } from "@/types";
+import { staffService, salaryService, attendanceService, advanceService } from "@/services";
+import { type Staff, type SalaryRecord, type SalaryPayment, type AdvanceRecord, calculateSalary } from "@/types";
 import { formatCurrency, formatMonth, getCurrentMonth, formatDate } from "@/lib/utils";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ function SalaryCard({
   const methodInfo = (m: string) => PAY_METHOD_ICONS[m] || PAY_METHOD_ICONS.other;
 
   return (
-    <Card className="group hover:shadow-md transition-all overflow-hidden">
+    <Card className="group glass-card overflow-hidden">
       <CardContent className="p-0">
         {/* ── Top bar ──────────────────────────────────────────── */}
         <div className="p-4 sm:p-5">
@@ -129,29 +129,29 @@ function SalaryCard({
 
           {/* Salary breakdown grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            <div className="bg-muted/40 rounded-xl p-3">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Base Salary</p>
+            <div className="bg-glass-bg rounded-xl p-3 border border-glass-border">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Base Salary</p>
               <p className="text-sm font-bold text-foreground">{formatCurrency(record.baseSalary)}</p>
             </div>
             {record.previousDue > 0 && (
               <div className="bg-amber-500/10 rounded-xl p-3 border border-amber-500/20">
-                <p className="text-[10px] text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-0.5">Previous Due</p>
-                <p className="text-sm font-bold text-amber-600 dark:text-amber-400">+{formatCurrency(record.previousDue)}</p>
+                <p className="text-[10px] font-bold text-amber-500/70 uppercase tracking-widest mb-0.5">Previous Due</p>
+                <p className="text-sm font-bold text-amber-400">+{formatCurrency(record.previousDue)}</p>
               </div>
             )}
-            <div className="bg-muted/40 rounded-xl p-3">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Net Payable</p>
+            <div className="bg-glass-bg rounded-xl p-3 border border-glass-border">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Net Payable</p>
               <p className="text-sm font-bold text-foreground">{formatCurrency(totalDue)}</p>
             </div>
-            <div className="bg-emerald-500/10 rounded-xl p-3">
-              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-0.5">Paid</p>
-              <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(record.totalPaid)}</p>
+            <div className="bg-emerald-500/10 rounded-xl p-3 border border-emerald-500/20">
+              <p className="text-[10px] font-bold text-emerald-500/70 uppercase tracking-widest mb-0.5">Paid</p>
+              <p className="text-sm font-bold text-emerald-400">{formatCurrency(record.totalPaid)}</p>
             </div>
-            <div className={`rounded-xl p-3 ${record.remainingDue > 0 ? "bg-red-500/10 border border-red-500/20" : "bg-emerald-500/10"}`}>
-              <p className={`text-[10px] uppercase font-bold tracking-wider ${record.remainingDue > 0 ? "text-muted-foreground" : record.remainingDue < 0 ? "text-orange-500/80" : "text-emerald-600/70"}`}>
+            <div className={`rounded-xl p-3 border ${record.remainingDue > 0 ? "bg-red-500/10 border-red-500/20" : "bg-emerald-500/10 border-emerald-500/20"}`}>
+              <p className={`text-[10px] font-bold uppercase tracking-widest ${record.remainingDue > 0 ? "text-muted-foreground" : record.remainingDue < 0 ? "text-orange-500/70" : "text-emerald-500/70"}`}>
                 {record.remainingDue > 0 ? "Remaining" : record.remainingDue < 0 ? "Owes Company" : "Settled"}
               </p>
-              <p className={`text-sm font-bold ${record.remainingDue > 0 ? "text-red-500" : record.remainingDue < 0 ? "text-orange-600" : "text-emerald-600"}`}>
+              <p className={`text-sm font-bold ${record.remainingDue > 0 ? "text-red-400" : record.remainingDue < 0 ? "text-orange-400" : "text-emerald-400"}`}>
                 {record.remainingDue < 0 ? "-" : ""}{formatCurrency(Math.abs(record.remainingDue))}
               </p>
             </div>
@@ -173,23 +173,23 @@ function SalaryCard({
         </div>
 
         {/* ── Payment History (collapsible) ──────────────────── */}
-        <div className="border-t border-border">
+        <div className="border-t border-glass-border">
           <button
             onClick={() => setExpanded(e => !e)}
-            className="w-full flex items-center justify-between px-4 sm:px-5 py-2.5 text-xs text-muted-foreground hover:bg-muted/40 transition-colors"
+            className="w-full flex items-center justify-between px-4 sm:px-5 py-3 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-glass-bg transition-colors"
           >
-            <span className="font-medium">
+            <span>
               {payments.length > 0
                 ? `${payments.length} payment${payments.length > 1 ? "s" : ""} recorded`
                 : "No payments yet"}
             </span>
-            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
 
           {expanded && (
             <div className="px-4 sm:px-5 pb-4 space-y-2">
               {payments.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-3">No payments recorded yet.</p>
+                <p className="text-xs font-medium text-muted-foreground text-center py-3">No payments recorded yet.</p>
               ) : (
                 payments.map((p, idx) => {
                   const mi = methodInfo(p.paymentMethod);
@@ -197,27 +197,27 @@ function SalaryCard({
                   return (
                     <div
                       key={p.id}
-                      className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl"
+                      className="flex items-center gap-3 p-3 bg-glass-bg border border-glass-border rounded-xl hover:bg-glass-bg transition-colors"
                     >
                       {/* Timeline dot */}
                       <div className="relative flex flex-col items-center shrink-0">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-background border-2 ${record.status === "paid" && idx === 0 ? "border-emerald-500" : "border-border"}`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-[#0B0F19] border border-glass-border ${record.status === "paid" && idx === 0 ? "shadow-[0_0_10px_rgba(16,185,129,0.3)] border-emerald-500/50" : ""}`}>
                           <Icon className={`h-3.5 w-3.5 ${mi.color}`} />
                         </div>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-sm font-bold text-foreground">{formatCurrency(p.amountPaid)}</p>
-                          <span className="text-[10px] uppercase font-semibold text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground bg-glass-bg px-2 py-0.5 rounded-full border border-glass-border">
                             {mi.label}
                           </span>
                         </div>
-                        <p className="text-xs text-muted-foreground">{formatDate(p.paymentDate)}</p>
+                        <p className="text-xs font-medium text-muted-foreground">{formatDate(p.paymentDate)}</p>
                         {p.note && <p className="text-xs text-muted-foreground italic mt-0.5 truncate">{p.note}</p>}
                       </div>
                       <button
                         onClick={() => onDownloadReceipt(record, p)}
-                        className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors shrink-0"
+                        className="h-8 w-8 flex items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 transition-colors shrink-0"
                         title="Download Receipt"
                       >
                         <Download className="h-3.5 w-3.5" />
@@ -254,7 +254,7 @@ export function SalaryManagement() {
   // ── Forms ──
   const {
     register: regGen, handleSubmit: handleGenSubmit,
-    reset: resetGen, watch: watchGen,
+    reset: resetGen, watch: watchGen, setValue: setGenValue,
     formState: { errors: errGen },
   } = useForm<SalaryFormData>({
     resolver: zodResolver(salarySchema),
@@ -304,17 +304,25 @@ export function SalaryManagement() {
       try {
         const [yrStr, moStr] = watchedMonth.split("-");
         const daysInMonth = new Date(Number(yrStr), Number(moStr), 0).getDate();
-        const [attRecords, lastUnpaid] = await Promise.all([
+        const [attRecords, lastUnpaid, pendingAdvances] = await Promise.all([
           attendanceService.getByStaffAndMonth(watchedStaffId, watchedMonth),
           salaryService.getLastUnpaidRecord(watchedStaffId, Number(yrStr), Number(moStr)),
+          advanceService.getPendingByStaff(watchedStaffId)
         ]);
         const prevDue = lastUnpaid?.remainingDue || 0;
+        const autoAdvanceAmount = pendingAdvances.reduce((sum, a) => sum + a.amount, 0);
+        
+        // Auto-fill advance field if it's 0 to show the recovered amount
+        if (Number(watchedAdvance) === 0 && autoAdvanceAmount > 0) {
+          setGenValue("advance", autoAdvanceAmount);
+        }
+
         const result = calculateSalary({
           staff,
           attendanceRecords: attRecords,
           workingDaysInMonth: daysInMonth,
           bonus: Number(watchedBonus) || 0,
-          advance: Number(watchedAdvance) || 0,
+          advance: Number(watchedAdvance) || autoAdvanceAmount,
           extraDeduction: Number(watchedExtra) || 0,
         });
         setPreviewCalc(result);
@@ -364,18 +372,22 @@ export function SalaryManagement() {
       }
 
       const daysInMonth = new Date(year, month, 0).getDate();
-      const [attRecords, lastUnpaid] = await Promise.all([
+      const [attRecords, lastUnpaid, pendingAdvances] = await Promise.all([
         attendanceService.getByStaffAndMonth(data.staffId, data.month),
         salaryService.getLastUnpaidRecord(data.staffId, year, month),
+        advanceService.getPendingByStaff(data.staffId)
       ]);
 
       const previousDue = lastUnpaid?.remainingDue || 0;
+      const advanceIds = pendingAdvances.map(a => a.id!);
+      const autoAdvanceAmount = pendingAdvances.reduce((sum, a) => sum + a.amount, 0);
+
       const calc = calculateSalary({
         staff,
         attendanceRecords: attRecords,
         workingDaysInMonth: daysInMonth,
         bonus: data.bonus,
-        advance: data.advance,
+        advance: data.advance || autoAdvanceAmount,
         extraDeduction: data.extraDeduction,
       });
 
@@ -395,6 +407,7 @@ export function SalaryManagement() {
         totalPaid: 0,
         remainingDue: calc.finalSalary + previousDue,
         status: "pending",
+        advanceIds,
         note: data.note,
         updatedAt: now,
       } as any);
@@ -532,22 +545,22 @@ export function SalaryManagement() {
       </div>
 
       {/* Summary stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card><CardContent className="p-4">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Total Records</p>
-          <p className="text-xl font-bold text-foreground">{records.length}</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 lg:gap-4">
+        <Card className="glass-card"><CardContent className="p-4 sm:p-5">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Total Records</p>
+          <p className="text-2xl font-bold text-foreground">{records.length}</p>
         </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Total Paid</p>
-          <p className="text-xl font-bold text-emerald-500">{formatCurrency(totalPaid)}</p>
+        <Card className="glass-card"><CardContent className="p-4 sm:p-5">
+          <p className="text-[10px] font-bold text-emerald-500/70 uppercase tracking-widest mb-1">Total Paid</p>
+          <p className="text-2xl font-bold text-emerald-400 text-gradient from-emerald-400 to-teal-400">{formatCurrency(totalPaid)}</p>
         </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-[10px] text-red-400 uppercase tracking-wide mb-1">Still Due</p>
-          <p className="text-xl font-bold text-red-400">{formatCurrency(totalDue)}</p>
+        <Card className="glass-card"><CardContent className="p-4 sm:p-5">
+          <p className="text-[10px] font-bold text-red-500/70 uppercase tracking-widest mb-1">Still Due</p>
+          <p className="text-2xl font-bold text-red-400 text-gradient from-red-400 to-rose-400">{formatCurrency(totalDue)}</p>
         </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Fully Paid</p>
-          <p className="text-xl font-bold text-foreground">{records.filter(r => r.status === "paid").length}/{records.length}</p>
+        <Card className="glass-card"><CardContent className="p-4 sm:p-5">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Fully Paid</p>
+          <p className="text-2xl font-bold text-foreground">{records.filter(r => r.status === "paid").length}<span className="text-base text-muted-foreground font-medium">/{records.length}</span></p>
         </CardContent></Card>
       </div>
 
@@ -615,7 +628,7 @@ export function SalaryManagement() {
             </div>
             <div>
               <label className="text-sm font-medium text-foreground block mb-1.5">Advance (₹)</label>
-              <Input type="number" min={0} {...regGen("advance", { valueAsNumber: true })} placeholder="0" />
+              <Input type="number" min={0} {...regGen("advance", { valueAsNumber: true })} placeholder="0" className="bg-amber-500/5 focus-visible:ring-amber-500/30" />
             </div>
 
             {/* Extra deduction */}

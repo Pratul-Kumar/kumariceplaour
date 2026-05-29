@@ -132,27 +132,27 @@ export function LeaveManagement() {
       </div>
 
       {/* Staff Leave Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 lg:gap-4">
         {staffSummary.map((s) => (
-          <div key={s.id} className={`p-3 rounded-xl border ${s.overLimit ? "bg-red-500/10 border-red-500/30" : "bg-muted/50 border-border"}`}>
-            <p className="text-xs font-medium text-foreground truncate">{s.name}</p>
-            <p className={`text-lg font-bold mt-1 ${s.overLimit ? "text-red-400" : "text-foreground"}`}>{s.leavesThisMonth}</p>
-            <p className="text-xs text-muted-foreground">of {s.allowedCasualLeavesPerMonth} allowed</p>
+          <div key={s.id} className={`p-4 rounded-2xl border ${s.overLimit ? "bg-red-500/10 border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.1)]" : "bg-glass-bg border-glass-border"}`}>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest truncate">{s.name}</p>
+            <p className={`text-2xl font-bold mt-1.5 ${s.overLimit ? "text-red-400" : "text-foreground"}`}>{s.leavesThisMonth}</p>
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mt-0.5">of {s.allowedCasualLeavesPerMonth} allowed</p>
           </div>
         ))}
       </div>
 
       {loading ? (
-        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
+        <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-2xl" />)}</div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon="🏖️" title="No leave records" description="No leaves recorded for this period" action={<Button onClick={() => setModalOpen(true)}><Plus className="h-4 w-4 mr-2" />Add Leave</Button>} />
+        <EmptyState icon="🏖️" title="No leave records" description="No leaves recorded for this period" action={<Button variant="glow" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4 mr-2" />Add Leave</Button>} />
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {filtered.map((r) => {
             const s = staffList.find((st) => st.id === r.staffId);
             return (
-              <Card key={r.id} className="group hover:shadow-md transition-all">
-                <CardContent className="p-4">
+              <Card key={r.id} className="group glass-card overflow-hidden transition-all duration-300">
+                <CardContent className="p-4 sm:p-5">
                   <div className="flex items-center gap-3">
                     <div className={`px-2.5 py-1 rounded-lg border text-xs font-semibold capitalize ${LEAVE_COLORS[r.leaveType]}`}>
                       {r.leaveType}

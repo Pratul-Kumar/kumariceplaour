@@ -71,6 +71,7 @@ export function getLast12Months() {
   const months: string[] = [];
   for (let i = 11; i >= 0; i--) {
     const d = new Date();
+    d.setDate(1); // Set to 1st to prevent month overflow (e.g., Feb 28/29)
     d.setMonth(d.getMonth() - i);
     months.push(format(d, "yyyy-MM"));
   }

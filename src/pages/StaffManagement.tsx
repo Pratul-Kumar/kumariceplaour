@@ -181,9 +181,9 @@ export function StaffManagement() {
       ) : filtered.length === 0 ? (
         <EmptyState icon="👥" title="No staff found" description="Add your first staff member to get started" action={<Button onClick={openAdd}><Plus className="h-4 w-4 mr-2" />Add Staff</Button>} />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
           {filtered.map((s) => (
-            <Card key={s.id} className="group hover:shadow-lg transition-all duration-200">
+            <Card key={s.id} className="group glass-card overflow-hidden">
               <CardContent className="p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
@@ -225,13 +225,13 @@ export function StaffManagement() {
                 </div>
 
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="flex-1 gap-1" onClick={() => navigate(`/staff/${s.id}`)}>
+                  <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => navigate(`/staff/${s.id}`)}>
                     <Eye className="h-3.5 w-3.5" /> View
                   </Button>
-                  <Button variant="outline" size="sm" className="flex-1 gap-1" onClick={() => openEdit(s)}>
+                  <Button variant="secondary" size="sm" className="flex-1 gap-1.5" onClick={() => openEdit(s)}>
                     <Edit2 className="h-3.5 w-3.5" /> Edit
                   </Button>
-                  <button onClick={() => setDeleteId(s.id!)} className="p-2 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors">
+                  <button onClick={() => setDeleteId(s.id!)} className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>

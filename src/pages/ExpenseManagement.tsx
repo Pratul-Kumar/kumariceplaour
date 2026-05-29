@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Search, Edit2, Trash2, Filter, Download, TrendingDown } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { Plus, Search, Edit2, Trash2, Download, Receipt, TrendingDown, TrendingUp, Filter } from "lucide-react";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import {
   Button, Input, Select, Card, CardContent, CardHeader, CardTitle,
   Badge, EmptyState, Spinner, Skeleton
@@ -13,12 +13,11 @@ import { useToast } from "@/components/ui/toast";
 import { expenseService, staffService } from "@/services";
 import { EXPENSE_CATEGORIES, getCategoryInfo, type Expense, type ExpenseCategory, type Staff } from "@/types";
 import { formatCurrency, formatDate, getCurrentMonth } from "@/lib/utils";
-// XLSX loaded dynamically on export click (saves 208KB gzip on initial load)
 
 const expenseSchema = z.object({
   title: z.string().min(2, "Title required"),
   amount: z.preprocess((v) => Number(v) || 0, z.number().min(1, "Enter a valid amount")),
-  category: z.enum(["item_expense","salary","bonus","electricity","rent","internet","transport","maintenance","extra_expense","miscellaneous"] as const),
+  category: z.enum(["item_expense","salary","salary_advance","bonus","electricity","rent","internet","transport","maintenance","extra_expense","miscellaneous"] as const),
   date: z.string().min(1, "Date required"),
   note: z.string().optional(),
   staffId: z.string().optional(),
@@ -26,12 +25,15 @@ const expenseSchema = z.object({
 
 type ExpenseFormData = z.infer<typeof expenseSchema>;
 
-const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) => {
+const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { value: number, payload: any }[]; label?: string }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-card border border-border rounded-lg p-3 shadow-xl text-sm">
-      <p className="font-medium text-foreground">{label}</p>
-      <p className="text-primary font-semibold">{formatCurrency(payload[0].value)}</p>
+    <div className="bg-card/95 backdrop-blur-xl border border-glass-border rounded-xl p-3 shadow-2xl min-w-[120px]">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: payload[0].payload.color }} />
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
+      </div>
+      <p className="text-xl font-bold text-foreground">{formatCurrency(payload[0].value)}</p>
     </div>
   );
 };
@@ -43,6 +45,7 @@ export function ExpenseManagement() {
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
   const [filterMonth, setFilterMonth] = useState(getCurrentMonth());
+  const [sortOrder, setSortOrder] = useState<"latest" | "oldest" | "high" | "low">("latest");
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<Expense | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -50,10 +53,35 @@ export function ExpenseManagement() {
   const [categoryTotals, setCategoryTotals] = useState<Record<string, number>>({});
   const { toast } = useToast();
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<ExpenseFormData>({
+  const { register, handleSubmit, reset, watch, setValue, setError, formState: { errors } } = useForm<ExpenseFormData>({
     resolver: zodResolver(expenseSchema),
     defaultValues: { date: new Date().toISOString().split("T")[0], category: "item_expense" },
   });
+
+  const watchCategory = watch("category");
+  const watchStaffId = watch("staffId");
+
+  // Dynamic Title Logic
+  useEffect(() => {
+    if (editItem) return;
+    switch(watchCategory) {
+      case "salary_advance":
+        const st = staff.find(s => s.id === watchStaffId);
+        setValue("title", `Salary Advance${st ? ` - ${st.name}` : ''}`);
+        break;
+      case "rent": setValue("title", "Shop Rent"); break;
+      case "electricity": setValue("title", "Electricity Bill"); break;
+      case "internet": setValue("title", "Internet Bill"); break;
+      case "transport": setValue("title", "Transport Expense"); break;
+      case "maintenance": setValue("title", "Maintenance / Repairs"); break;
+      case "bonus": setValue("title", "Employee Bonus"); break;
+      case "item_expense":
+      case "miscellaneous":
+      case "extra_expense":
+        setValue("title", ""); 
+        break;
+    }
+  }, [watchCategory, watchStaffId, editItem, setValue, staff]);
 
   useEffect(() => {
     setLoading(true);
@@ -61,12 +89,9 @@ export function ExpenseManagement() {
     let unsubStaff: () => void;
 
     const setup = async () => {
-      // We can compute category totals on the fly from the expenses array
       unsubStaff = staffService.subscribeAll((data) => setStaff(data));
       unsubExpenses = expenseService.subscribeByMonth(filterMonth, (data) => {
         setExpenses(data);
-        
-        // Compute category totals
         const totals: Record<string, number> = {};
         data.forEach(e => {
           totals[e.category] = (totals[e.category] || 0) + e.amount;
@@ -87,13 +112,19 @@ export function ExpenseManagement() {
     const matchSearch = e.title.toLowerCase().includes(search.toLowerCase());
     const matchCat = !filterCategory || e.category === filterCategory;
     return matchSearch && matchCat;
+  }).sort((a, b) => {
+    if (sortOrder === "latest") return b.date.localeCompare(a.date);
+    if (sortOrder === "oldest") return a.date.localeCompare(b.date);
+    if (sortOrder === "high") return b.amount - a.amount;
+    if (sortOrder === "low") return a.amount - b.amount;
+    return 0;
   });
 
   const monthTotal = filtered.reduce((s, e) => s + e.amount, 0);
 
   const openAdd = () => {
     setEditItem(null);
-    reset({ date: new Date().toISOString().split("T")[0], category: "item_expense" });
+    reset({ title: "", amount: 0 as any, date: new Date().toISOString().split("T")[0], category: "item_expense", staffId: "", note: "" });
     setModalOpen(true);
   };
 
@@ -104,17 +135,20 @@ export function ExpenseManagement() {
   };
 
   const onSubmit = async (data: ExpenseFormData) => {
+    if (data.category === "salary_advance" && !data.staffId) {
+      setError("staffId", { message: "Staff selection is mandatory for Salary Advance" });
+      return;
+    }
     setSaving(true);
     try {
-      const now = new Date().toISOString();
       if (editItem?.id) {
         const payload: any = { ...data };
-        if (!payload.staffId) delete payload.staffId;
+        if (!payload.staffId || payload.category !== "salary_advance") delete payload.staffId;
         await expenseService.update(editItem.id, payload);
         toast({ type: "success", title: "Expense Updated" });
       } else {
-        const payload: any = { ...data, date: data.date };
-        if (!payload.staffId) delete payload.staffId;
+        const payload: any = { ...data };
+        if (!payload.staffId || payload.category !== "salary_advance") delete payload.staffId;
         await expenseService.add(payload);
         toast({ type: "success", title: "Expense Added", description: `${formatCurrency(data.amount)} recorded.` });
       }
@@ -148,74 +182,89 @@ export function ExpenseManagement() {
     toast({ type: "success", title: "Exported to Excel" });
   };
 
-  const chartData = Object.entries(categoryTotals).map(([cat, amt]) => ({
-    name: getCategoryInfo(cat as ExpenseCategory).label.split(" ")[0],
-    amount: amt,
-    color: getCategoryInfo(cat as ExpenseCategory).color,
-  }));
+  const chartData = Object.entries(categoryTotals)
+    .sort(([, a], [, b]) => b - a)
+    .map(([cat, amt]) => ({
+      name: getCategoryInfo(cat as ExpenseCategory).label.split(" ")[0],
+      amount: amt,
+      color: getCategoryInfo(cat as ExpenseCategory).color,
+    }));
 
   return (
-    <div className="space-y-5 pb-20 lg:pb-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 pb-24 lg:pb-8">
+      {/* 1. TOP CONTROLS */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Expenses</h1>
-          <p className="text-sm text-muted-foreground">Total: <span className="text-red-400 font-semibold">{formatCurrency(monthTotal)}</span></p>
+          <h1 className="text-2xl font-bold text-foreground">Financial Ledger</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage and track your operational expenses.</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={exportToExcel} className="gap-2 hidden sm:flex">
-            <Download className="h-4 w-4" /> Export
-          </Button>
-          <Button onClick={openAdd} className="gap-2"><Plus className="h-4 w-4" /> Add</Button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Input type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="w-full sm:w-44" />
+          <Button onClick={openAdd} className="gap-2 shadow-[0_0_20px_rgba(99,102,241,0.3)]"><Plus className="h-4 w-4" /> Record Expense</Button>
         </div>
       </div>
 
-      {/* Month Selector + Search */}
-      <div className="flex flex-col sm:flex-row gap-2">
-        <Input type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="sm:w-44" />
+      <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search expenses..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input placeholder="Search records by title..." className="pl-9 bg-card/50" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select
-          options={EXPENSE_CATEGORIES.map((c) => ({ value: c.value, label: c.label }))}
-          placeholder="All Categories"
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          className="sm:w-44"
+          options={[
+            { value: "latest", label: "Date: Latest First" },
+            { value: "oldest", label: "Date: Oldest First" },
+            { value: "high", label: "Amount: High to Low" },
+            { value: "low", label: "Amount: Low to High" },
+          ]}
+          value={sortOrder}
+          onChange={(e) => setSortOrder(e.target.value as any)}
+          className="w-full sm:w-48 bg-card/50"
         />
+        <Button variant="outline" onClick={exportToExcel} className="gap-2 hidden sm:flex shrink-0">
+          <Download className="h-4 w-4" /> Export CSV
+        </Button>
       </div>
 
-      {/* Category Summary */}
+      {/* 2. ANALYTICS HERO */}
       {!loading && chartData.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Category Breakdown</CardTitle>
+        <Card className="glass-card relative overflow-hidden border-glass-border shadow-2xl">
+          <div className="absolute top-0 right-0 p-6 flex flex-col items-end pointer-events-none">
+             <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Total Spends</p>
+             <p className="text-3xl font-black text-foreground drop-shadow-md">{formatCurrency(monthTotal)}</p>
+          </div>
+          <CardHeader className="pb-0">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <TrendingDown className="h-4 w-4 text-primary" /> Expense Analytics
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={140}>
-              <BarChart data={chartData} barSize={28}>
-                <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
-                  {chartData.map((entry, i) => (
-                    <rect key={i} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
+          <CardContent className="pt-6 pb-2">
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--glass-bg)" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} dy={10} />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--glass-bg)' }} />
+                <Area type="monotone" dataKey="amount" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorAmount)" activeDot={{ r: 6, fill: "#6366f1", stroke: "#fff", strokeWidth: 2 }} />
+              </AreaChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       )}
 
-      {/* Category Pills */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      {/* 3. CATEGORY FILTER PILLS */}
+      <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide snap-x">
         <button
           onClick={() => setFilterCategory("")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${!filterCategory ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"}`}
+          className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all snap-start ${!filterCategory ? "bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-[0_4px_20px_rgba(99,102,241,0.4)] scale-105" : "bg-card/40 text-muted-foreground hover:bg-card hover:text-white border border-glass-border"}`}
         >
-          All ({expenses.length})
+          <Receipt className="h-4 w-4" /> All Records
+          <span className="bg-black/20 px-2 py-0.5 rounded-md text-xs">{expenses.length}</span>
         </button>
         {EXPENSE_CATEGORIES.map((cat) => {
           const count = expenses.filter((e) => e.category === cat.value).length;
@@ -224,102 +273,147 @@ export function ExpenseManagement() {
             <button
               key={cat.value}
               onClick={() => setFilterCategory(cat.value === filterCategory ? "" : cat.value)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${filterCategory === cat.value ? "text-white shadow-md" : "bg-muted text-muted-foreground hover:bg-accent"}`}
-              style={filterCategory === cat.value ? { backgroundColor: cat.color } : {}}
+              className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all snap-start ${filterCategory === cat.value ? "text-white shadow-xl scale-105" : "bg-card/40 text-muted-foreground hover:bg-card hover:text-white border border-glass-border"}`}
+              style={filterCategory === cat.value ? { background: `linear-gradient(135deg, ${cat.color}, ${cat.color}cc)`, boxShadow: `0 4px 20px ${cat.color}40`, border: `1px solid ${cat.color}50` } : {}}
             >
-              {cat.icon} {cat.label} ({count})
+              <span className="text-base">{cat.icon}</span> {cat.label}
+              <span className="bg-black/20 px-2 py-0.5 rounded-md text-xs">{count}</span>
             </button>
           );
         })}
       </div>
 
-      {/* Expense List */}
-      {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
-        </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon="💸"
-          title="No expenses found"
-          description={search ? "Try different filters" : "Add your first expense"}
-          action={<Button onClick={openAdd}><Plus className="h-4 w-4 mr-2" />Add Expense</Button>}
-        />
-      ) : (
-        <div className="space-y-2">
-          {filtered.map((exp) => {
+      {/* 4. EXPENSE LIST (TIMELINE) */}
+      <div className="space-y-3">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-2xl" />)
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon="📭"
+            title="No records found"
+            description={search ? "Adjust your filters to see results" : "Your ledger is clean for this period."}
+            action={<Button variant="glow" onClick={openAdd}><Plus className="h-4 w-4 mr-2" />Add Record</Button>}
+          />
+        ) : (
+          filtered.map((exp) => {
             const cat = getCategoryInfo(exp.category);
             return (
-              <Card key={exp.id} className="group hover:shadow-md transition-all duration-200">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ backgroundColor: `${cat.color}20` }}>
-                      {cat.icon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground truncate">{exp.title}</p>
-                      <p className="text-xs text-muted-foreground">{cat.label} · {formatDate(exp.date)}</p>
-                      {exp.note && <p className="text-xs text-muted-foreground/70 truncate mt-0.5">{exp.note}</p>}
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <p className="text-base font-bold text-red-400">- {formatCurrency(exp.amount)}</p>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => openEdit(exp)} className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => setDeleteId(exp.id!)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
+              <div key={exp.id} className="group relative flex items-center gap-4 p-4 rounded-2xl bg-card/30 hover:bg-card/80 border border-glass-border hover:border-glass-border transition-all hover:shadow-xl hover:-translate-y-0.5 overflow-hidden">
+                <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity bg-gradient-to-r from-[${cat.color}] to-transparent pointer-events-none`} />
+                
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-inner" style={{ backgroundColor: `${cat.color}20`, border: `1px solid ${cat.color}30` }}>
+                  {cat.icon}
+                </div>
+                
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-base font-bold text-foreground truncate">{exp.title}</p>
+                    {exp.category === "salary_advance" && (
+                      <Badge variant="warning" className="text-[10px] uppercase tracking-widest py-0 border-warning/30 bg-warning/10 text-warning hidden sm:inline-flex">Linked Advance</Badge>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cat.color }} />
+                      {cat.label}
+                    </span>
+                    <span className="text-xs text-muted-foreground/50">•</span>
+                    <span className="text-xs text-muted-foreground">{formatDate(exp.date)}</span>
+                    
+                    {exp.staffId && (
+                      <>
+                        <span className="text-xs text-muted-foreground/50">•</span>
+                        <span className="text-xs text-emerald-400 font-medium bg-emerald-400/10 px-2 py-0.5 rounded-md">
+                          {staff.find(s => s.id === exp.staffId)?.name || "Unknown"}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {exp.note && <p className="text-xs text-muted-foreground/60 truncate mt-2 italic flex items-center gap-1"><span className="text-muted-foreground/40">↳</span> {exp.note}</p>}
+                </div>
+                
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  <p className="text-lg font-black text-foreground tracking-tight drop-shadow-sm">
+                    {formatCurrency(exp.amount)}
+                  </p>
+                  <div className="flex gap-1.5 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => openEdit(exp)} className="p-2 rounded-xl bg-accent/50 hover:bg-accent text-foreground transition-colors shadow-sm">
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => setDeleteId(exp.id!)} className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors shadow-sm">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
 
-      {/* Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editItem ? "Edit Expense" : "Add Expense"}>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div>
-            <label className="text-sm font-medium text-foreground block mb-1.5">Title *</label>
-            <Input {...register("title")} placeholder="Expense description" />
-            {errors.title && <p className="text-xs text-red-400 mt-1">{errors.title.message}</p>}
+      {/* DYNAMIC WORKFLOW MODAL */}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editItem ? "Edit Record" : "New Record"} className="sm:max-w-[425px]">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 mt-2">
+          
+          {/* 1. Category Field (First) */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Category</label>
+            <Select options={EXPENSE_CATEGORIES.filter(c => c.value !== "salary").map((c) => ({ value: c.value, label: `${c.icon} ${c.label}` }))} {...register("category")} className="h-12 bg-card/50" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <label className="text-sm font-medium text-foreground block mb-1.5">Staff Relation (Optional)</label>
-              <select {...register("staffId")} className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <option value="">None</option>
+          
+          {/* 2. Conditional Staff Field */}
+          {watchCategory === "salary_advance" && (
+            <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center justify-between">
+                Staff Member <span className="text-red-400 normal-case font-medium tracking-normal">*Required</span>
+              </label>
+              <select {...register("staffId")} className="flex h-12 w-full rounded-xl border border-glass-border bg-card/50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-inner">
+                <option value="">Select Employee</option>
                 {staff.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
               </select>
+              {errors.staffId && <p className="text-xs text-red-400">{errors.staffId.message}</p>}
+              <div className="mt-2 bg-warning/10 border border-warning/20 text-warning text-xs rounded-xl p-3 font-medium flex items-start gap-2">
+                <TrendingDown className="h-4 w-4 shrink-0" />
+                <p>This advance will be strictly tracked and auto-deducted from their upcoming salary computation.</p>
+              </div>
             </div>
-            <div>
-              <label className="text-sm font-medium text-foreground block mb-1.5">Amount *</label>
-              <Input {...register("amount")} placeholder="0" type="number" min={0} />
-              {errors.amount && <p className="text-xs text-red-400 mt-1">{errors.amount.message}</p>}
+          )}
+
+          {/* 3. Title Field (Auto-generates but editable) */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Description Title</label>
+            <Input {...register("title")} placeholder="e.g., Office Supplies, Bill Name..." className="h-12 bg-card/50" />
+            {errors.title && <p className="text-xs text-red-400">{errors.title.message}</p>}
+          </div>
+          
+          {/* 4. Amount & Date */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Amount</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold">₹</span>
+                <Input {...register("amount")} placeholder="0.00" type="number" min={0} step="any" className="pl-7 h-12 bg-card/50 font-bold text-lg" />
+              </div>
+              {errors.amount && <p className="text-xs text-red-400">{errors.amount.message}</p>}
             </div>
-            <div>
-              <label className="text-sm font-medium text-foreground block mb-1.5">Date *</label>
-              <Input {...register("date")} type="date" />
-              {errors.date && <p className="text-xs text-red-400 mt-1">{errors.date.message}</p>}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Date</label>
+              <Input {...register("date")} type="date" className="h-12 bg-card/50" />
+              {errors.date && <p className="text-xs text-red-400">{errors.date.message}</p>}
             </div>
           </div>
-          <div>
-            <label className="text-sm font-medium text-foreground block mb-1.5">Category *</label>
-            <Select options={EXPENSE_CATEGORIES.map((c) => ({ value: c.value, label: `${c.icon} ${c.label}` }))} {...register("category")} />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-foreground block mb-1.5">Note</label>
-            <Input {...register("note")} placeholder="Optional note..." />
+          
+          {/* 5. Notes */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Optional Notes</label>
+            <textarea {...register("note")} placeholder="Add any additional context or reference numbers here..." className="flex min-h-[80px] w-full rounded-xl border border-glass-border bg-card/50 px-3 py-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary resize-none shadow-inner" />
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button type="submit" className="flex-1" disabled={saving}>
-              {saving ? <Spinner className="h-4 w-4" /> : editItem ? "Update" : "Add Expense"}
+          {/* Actions */}
+          <div className="flex gap-3 pt-4 border-t border-glass-border pb-2">
+            <Button type="button" variant="outline" className="flex-1 h-12 rounded-xl border-glass-border" onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button type="submit" className="flex-1 h-12 rounded-xl shadow-[0_0_20px_rgba(99,102,241,0.4)]" disabled={saving}>
+              {saving ? <Spinner className="h-5 w-5" /> : editItem ? "Save Changes" : "Confirm Record"}
             </Button>
           </div>
         </form>
@@ -329,9 +423,9 @@ export function ExpenseManagement() {
         open={deleteId !== null}
         onClose={() => setDeleteId(null)}
         onConfirm={() => deleteId && handleDelete(deleteId)}
-        title="Delete Expense"
-        description="This expense record will be permanently deleted."
-        confirmText="Delete"
+        title="Delete Record"
+        description="This financial record will be permanently deleted. If this is a linked salary advance, the system will lose its deduction reference."
+        confirmText="Delete Permanently"
       />
     </div>
   );

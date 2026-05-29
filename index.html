@@ -21,6 +21,19 @@
     <link rel="dns-prefetch" href="https://firestore.googleapis.com" />
     <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com" />
     <title>Kumar Ice Parlour — Business Manager</title>
+    <script>
+      (function() {
+        try {
+          var localTheme = localStorage.getItem('theme');
+          var theme = localTheme || 'dark';
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

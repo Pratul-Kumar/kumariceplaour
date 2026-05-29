@@ -3,9 +3,11 @@ import {
   drawTable, drawSectionTitle, drawInfoGrid, drawStatCards, pdfCurrency, COLORS,
 } from "./pdfHelpers";
 import { formatDate, formatMonth } from "@/lib/utils";
-import type { SalaryRecord, Staff, SalaryPayment } from "@/types";
+import type { SalaryRecord, Staff, SalaryPayment, AdvanceRecord } from "@/types";
+import { doc as firestoreDoc, getDoc } from "firebase/firestore";
+import { db } from "@/firebase/config";
 
-export function generateSalarySlip(
+export async function generateSalarySlip(
   staff: Staff,
   record: SalaryRecord,
   payments: SalaryPayment[],
@@ -100,6 +102,38 @@ export function generateSalarySlip(
         3: { cellWidth: "auto" },
       }
     );
+  }
+
+  // ── Advance Adjustment Summary ───────────────────────────────────────────
+  if (record.advanceIds && record.advanceIds.length > 0) {
+    y = drawSectionTitle(doc, y, "Advance Adjustment Summary");
+    const advances = await Promise.all(record.advanceIds.map(async (id) => {
+      const snap = await getDoc(firestoreDoc(db, "advanceRecords", id));
+      return snap.exists() ? snap.data() as AdvanceRecord : null;
+    }));
+
+    const validAdvances = advances.filter((a): a is AdvanceRecord => a !== null);
+    if (validAdvances.length > 0) {
+      const advBody = validAdvances.map((a) => [
+        formatDate(a.date),
+        a.reason || "Salary Advance",
+        pdfCurrency(a.amount),
+        a.status === "deducted" ? "Recovered" : "Pending",
+      ]);
+
+      y = drawTable(
+        doc, y,
+        [["Advance Date", "Reason / Description", "Amount", "Status"]],
+        advBody,
+        "striped",
+        {
+          0: { cellWidth: 38 },
+          1: { cellWidth: "auto" },
+          2: { cellWidth: 38, halign: "right" },
+          3: { cellWidth: 32 },
+        }
+      );
+    }
   }
 
   drawSignatures(doc, y + 10, ["Authorized Signatory", "Employee Signature"]);

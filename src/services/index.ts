@@ -197,16 +197,62 @@ export const expenseService = {
     const now = new Date().toISOString();
     expenseMonthCache.del(data.date.slice(0, 7));
     expenseCatCache.del(data.date.slice(0, 7));
+    
+    if (data.category === "salary_advance") {
+      if (!data.staffId) throw new Error("Staff is required for salary advance.");
+      return runTransaction(db, async (tx) => {
+        const expenseRef = doc(expensesCol);
+        const advanceRef = doc(collection(db, "advanceRecords"));
+        tx.set(expenseRef, { ...data, createdAt: now, updatedAt: now });
+        tx.set(advanceRef, {
+          staffId: data.staffId,
+          expenseId: expenseRef.id,
+          amount: data.amount,
+          date: data.date,
+          month: data.date.slice(0, 7),
+          reason: data.note || "Salary Advance",
+          status: "pending",
+          createdAt: now,
+          updatedAt: now
+        });
+        return expenseRef;
+      });
+    }
+
     return addDoc(expensesCol, { ...data, createdAt: now, updatedAt: now });
   },
 
   update: async (id: string, data: Partial<Expense>) => {
     if (data.date) { expenseMonthCache.del(data.date.slice(0, 7)); expenseCatCache.del(data.date.slice(0, 7)); }
-    return updateDoc(doc(db, "expenses", id), { ...data, updatedAt: new Date().toISOString() });
+    const now = new Date().toISOString();
+    
+    if (data.category === "salary_advance" || data.amount !== undefined) {
+      const q = query(collection(db, "advanceRecords"), where("expenseId", "==", id));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const advDoc = snap.docs[0];
+        const updates: any = { updatedAt: now };
+        if (data.amount !== undefined) updates.amount = data.amount;
+        if (data.staffId !== undefined) updates.staffId = data.staffId;
+        if (data.date !== undefined) {
+           updates.date = data.date;
+           updates.month = data.date.slice(0, 7);
+        }
+        if (data.note !== undefined) updates.reason = data.note;
+        await updateDoc(advDoc.ref, updates);
+      }
+    }
+
+    return updateDoc(doc(db, "expenses", id), { ...data, updatedAt: now });
   },
 
   delete: async (id: string) => {
     expenseMonthCache.clear(); expenseCatCache.clear();
+    const q = query(collection(db, "advanceRecords"), where("expenseId", "==", id));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      await deleteDoc(snap.docs[0].ref);
+    }
     return deleteDoc(doc(db, "expenses", id));
   },
 };
@@ -373,6 +419,19 @@ export const salaryService = {
       tx.set(paymentRef, { ...data, createdAt: now });
       newPaymentId = paymentRef.id;
 
+      // Automatically create an expense record for this salary payment
+      const expenseRef = doc(collection(db, "expenses"));
+      tx.set(expenseRef, {
+        title: `Salary Payment`,
+        amount: data.amountPaid,
+        category: "salary",
+        date: data.paymentDate,
+        note: data.note || "Added from Salary Management",
+        staffId: data.staffId,
+        createdAt: now,
+        updatedAt: now,
+      });
+
       // Atomically update the salary record
       tx.update(recordRef, {
         totalPaid: newTotalPaid,
@@ -380,6 +439,18 @@ export const salaryService = {
         status,
         updatedAt: now,
       });
+
+      // If fully paid, mark advances as deducted
+      if (remainingDue <= 0 && record.advanceIds && record.advanceIds.length > 0) {
+        for (const advId of record.advanceIds) {
+          const advRef = doc(db, "advanceRecords", advId);
+          tx.update(advRef, {
+            status: "deducted",
+            deductedInMonth: `${record.year}-${String(record.month).padStart(2, "0")}`,
+            updatedAt: now
+          });
+        }
+      }
     });
 
     return newPaymentId;
@@ -492,6 +563,18 @@ export const settingsService = {
 const advancesCol = collection(db, "advanceRecords");
 
 export const advanceService = {
+  subscribePendingByStaff: (staffId: string, cb: (d: AdvanceRecord[]) => void) => {
+    const q = query(advancesCol, where("staffId", "==", staffId), where("status", "==", "pending"));
+    return onSnapshot(q, s => cb(s.docs.map(mapDoc<AdvanceRecord>)), err => console.error(err));
+  },
+  subscribeAll: (cb: (d: AdvanceRecord[]) => void) => {
+    return onSnapshot(advancesCol, s => cb(s.docs.map(mapDoc<AdvanceRecord>)), err => console.error(err));
+  },
+  getPendingByStaff: async (staffId: string) => {
+    const q = query(advancesCol, where("staffId", "==", staffId), where("status", "==", "pending"));
+    const snap = await getDocs(q);
+    return snap.docs.map(mapDoc<AdvanceRecord>);
+  },
   getByMonth: async (monthStr: string) => {
     // monthStr format: YYYY-MM
     const q = query(advancesCol, where("date", ">=", `${monthStr}-01`), where("date", "<=", `${monthStr}-31`));

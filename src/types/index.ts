@@ -43,7 +43,7 @@ export interface Attendance {
 // EXPENSES
 // ============================================================
 export type ExpenseCategory =
-  | "item_expense" | "salary" | "bonus" | "electricity" | "rent"
+  | "item_expense" | "salary" | "salary_advance" | "bonus" | "electricity" | "rent"
   | "internet" | "transport" | "maintenance" | "extra_expense" | "miscellaneous";
 
 export interface Expense {
@@ -77,6 +77,7 @@ export interface SalaryRecord {
   totalPaid: number;
   remainingDue: number;
   status: "pending" | "partial" | "paid";
+  advanceIds?: string[]; // tracks which advances were recovered in this salary
   note?: string;
   createdAt: string;
   updatedAt: string;
@@ -99,11 +100,13 @@ export interface SalaryPayment {
 export interface AdvanceRecord {
   id?: string;
   staffId: string;
+  expenseId?: string; // linked expense
   amount: number;
   date: string;
   month: string; // YYYY-MM
   reason?: string;
   status: "pending" | "deducted"; // when salary is generated, it marks these as deducted
+  deductedInMonth?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -153,6 +156,7 @@ export interface AppSettings {
 export const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string; color: string; icon: string }[] = [
   { value: "item_expense",  label: "Item Expense",  color: "#6366f1", icon: "📦" },
   { value: "salary",        label: "Salary",        color: "#10b981", icon: "💰" },
+  { value: "salary_advance",label: "Salary Advance",color: "#f43f5e", icon: "💸" },
   { value: "bonus",         label: "Bonus",         color: "#f59e0b", icon: "🎁" },
   { value: "electricity",   label: "Electricity",   color: "#f97316", icon: "⚡" },
   { value: "rent",          label: "Rent",          color: "#ec4899", icon: "🏠" },

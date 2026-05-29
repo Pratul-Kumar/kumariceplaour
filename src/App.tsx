@@ -18,7 +18,7 @@ const Settings = lazy(() => import("@/pages/Settings").then(m => ({ default: m.S
 const HistoryReports = lazy(() => import("@/pages/HistoryReports").then(m => ({ default: m.HistoryReports })));
 
 const FullPageLoader = ({ message = "Connecting to Cloud..." }: { message?: string }) => (
-  <div className="h-screen w-full flex items-center justify-center" style={{ background: "hsl(220,20%,6%)" }}>
+  <div className="h-screen w-full flex items-center justify-center bg-background">
     <div className="flex flex-col items-center gap-5">
       {/* Logo with neon ring */}
       <div className="relative">
@@ -33,7 +33,7 @@ const FullPageLoader = ({ message = "Connecting to Cloud..." }: { message?: stri
       <div className="animate-spin rounded-full h-7 w-7"
         style={{ border: "2px solid rgba(99,102,241,0.15)", borderTopColor: "#6366f1", boxShadow: "0 0 12px rgba(99,102,241,0.5)" }}
       />
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">{message}</p>
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">{message}</p>
     </div>
   </div>
 );
@@ -68,7 +68,7 @@ export function App() {
                         <div className="animate-spin rounded-full h-6 w-6"
                           style={{ border: "2px solid rgba(99,102,241,0.15)", borderTopColor: "#6366f1", boxShadow: "0 0 10px rgba(99,102,241,0.4)" }}
                         />
-                        <p className="text-xs text-slate-600 font-semibold uppercase tracking-widest">Loading...</p>
+                        <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest">Loading...</p>
                       </div>
                     </div>
                   }>

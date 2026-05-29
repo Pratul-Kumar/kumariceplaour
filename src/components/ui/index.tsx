@@ -22,11 +22,11 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       destructive:
         "bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-lg shadow-red-500/20 hover:from-red-400 hover:to-rose-500",
       outline:
-        "border text-slate-200 hover:bg-white/5 hover:text-white hover:border-indigo-500/40 transition-colors",
+        "border text-foreground hover:bg-glass-bg hover:text-white hover:border-indigo-500/40 transition-colors",
       secondary:
-        "text-slate-200 hover:bg-white/8 hover:text-white",
+        "text-foreground hover:bg-glass-bg hover:text-white",
       ghost:
-        "text-slate-400 hover:text-white hover:bg-white/6",
+        "text-muted-foreground hover:text-white hover:bg-white/6",
       link:
         "text-indigo-400 underline-offset-4 hover:underline hover:text-indigo-300 p-0 h-auto",
     };
@@ -40,8 +40,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     // Inline styles for variants that need dynamic dark bg
     const inlineStyle: Record<string, React.CSSProperties> = {
-      outline:   { background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.10)" },
-      secondary: { background: "rgba(255,255,255,0.06)" },
+      outline:   { background: "var(--glass-bg)", borderColor: "var(--glass-border)" },
+      secondary: { background: "var(--glass-bg)" },
     };
 
     return (
@@ -66,15 +66,15 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     <input
       ref={ref}
       className={cn(
-        "flex h-10 w-full rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-600",
+        "flex h-10 w-full rounded-xl px-3.5 py-2 text-sm text-foreground placeholder:text-muted-foreground",
         "ring-offset-transparent transition-all duration-200",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:border-indigo-500/50",
         "disabled:cursor-not-allowed disabled:opacity-40",
         className
       )}
       style={{
-        background: "rgba(255,255,255,0.05)",
-        border: "1px solid rgba(255,255,255,0.09)",
+        background: "var(--glass-bg)",
+        border: "1px solid var(--glass-border)",
         ...((props as any).style),
       }}
       {...props}
@@ -90,7 +90,7 @@ export const Label = React.forwardRef<HTMLLabelElement, React.LabelHTMLAttribute
   ({ className, ...props }, ref) => (
     <label
       ref={ref}
-      className={cn("text-xs font-semibold text-slate-400 uppercase tracking-wide", className)}
+      className={cn("text-xs font-semibold text-muted-foreground uppercase tracking-wide", className)}
       {...props}
     />
   )
@@ -105,13 +105,13 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
     <textarea
       ref={ref}
       className={cn(
-        "flex min-h-[88px] w-full rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-600",
+        "flex min-h-[88px] w-full rounded-xl px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground",
         "transition-all duration-200 resize-none",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50",
         "disabled:cursor-not-allowed disabled:opacity-40",
         className
       )}
-      style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}
+      style={{ background: "var(--glass-bg)", border: "1px solid rgba(255,255,255,0.09)" }}
       {...props}
     />
   )
@@ -127,7 +127,7 @@ export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDi
       ref={ref}
       className={cn("rounded-2xl text-card-foreground transition-all duration-200", className)}
       style={{
-        background: "linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)",
+        background: "linear-gradient(135deg, var(--glass-bg) 0%, rgba(255,255,255,0.02) 100%)",
         border: "1px solid rgba(255,255,255,0.07)",
         borderTopColor: "rgba(255,255,255,0.11)",
         boxShadow: "0 4px 24px rgba(0,0,0,0.35), 0 1px 4px rgba(0,0,0,0.2)",
@@ -147,14 +147,14 @@ CardHeader.displayName = "CardHeader";
 
 export const CardTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLHeadingElement>>(
   ({ className, ...props }, ref) => (
-    <h3 ref={ref} className={cn("text-base font-bold text-slate-100 tracking-tight", className)} {...props} />
+    <h3 ref={ref} className={cn("text-base font-bold text-foreground tracking-tight", className)} {...props} />
   )
 );
 CardTitle.displayName = "CardTitle";
 
 export const CardDescription = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLParagraphElement>>(
   ({ className, ...props }, ref) => (
-    <p ref={ref} className={cn("text-xs text-slate-500", className)} {...props} />
+    <p ref={ref} className={cn("text-xs text-muted-foreground", className)} {...props} />
   )
 );
 CardDescription.displayName = "CardDescription";
@@ -183,7 +183,7 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
 export function Badge({ className, variant = "default", ...props }: BadgeProps) {
   const styles: Record<string, React.CSSProperties> = {
     default:     { background: "rgba(99,102,241,0.18)", color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.3)" },
-    secondary:   { background: "rgba(255,255,255,0.06)", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.1)" },
+    secondary:   { background: "var(--glass-bg)", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.1)" },
     destructive: { background: "rgba(239,68,68,0.12)",  color: "#fca5a5", border: "1px solid rgba(239,68,68,0.25)" },
     outline:     { background: "transparent",           color: "#94a3b8", border: "1px solid rgba(255,255,255,0.12)" },
     success:     { background: "rgba(16,185,129,0.12)", color: "#6ee7b7", border: "1px solid rgba(16,185,129,0.25)" },
@@ -253,15 +253,14 @@ export const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(({ classNa
     <div className="relative">
       <input ref={ref} type="checkbox" id={id} className="sr-only peer" {...props} />
       <div className={cn(
-        "w-11 h-6 rounded-full transition-colors duration-200",
+        "w-11 h-6 rounded-full transition-colors duration-200 bg-black/10 dark:bg-white/10",
         "peer-checked:bg-gradient-to-r peer-checked:from-indigo-500 peer-checked:to-violet-500",
         "after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-transform after:duration-200 peer-checked:after:translate-x-5",
         className
       )}
-        style={{ background: "rgba(255,255,255,0.12)" }}
       />
     </div>
-    {label && <span className="text-sm font-medium text-slate-300">{label}</span>}
+    {label && <span className="text-sm font-medium text-foreground">{label}</span>}
   </label>
 ));
 Switch.displayName = "Switch";
@@ -321,12 +320,12 @@ export function EmptyState({ icon, title, description, action }: {
     <div className="flex flex-col items-center justify-center py-14 px-4 text-center animate-fade-up">
       <div
         className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl mb-4"
-        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}
+        style={{ background: "var(--glass-bg)", border: "1px solid rgba(255,255,255,0.08)" }}
       >
         {icon}
       </div>
-      <h3 className="text-base font-bold text-slate-200 mb-1">{title}</h3>
-      {description && <p className="text-sm text-slate-500 mb-5 max-w-xs leading-relaxed">{description}</p>}
+      <h3 className="text-base font-bold text-foreground mb-1">{title}</h3>
+      {description && <p className="text-sm text-muted-foreground mb-5 max-w-xs leading-relaxed">{description}</p>}
       {action}
     </div>
   );

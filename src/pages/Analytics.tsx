@@ -11,10 +11,10 @@ import { formatCurrency, formatMonth, getLast12Months, getCurrentMonth } from "@
 const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { value: number; name: string }[]; label?: string }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-card border border-border rounded-lg p-3 shadow-xl text-sm">
-      <p className="font-medium text-foreground mb-1">{label}</p>
+    <div className="glass-card !bg-[#0F1322]/90 backdrop-blur-xl border border-glass-border rounded-xl p-3 shadow-2xl text-sm min-w-[120px]">
+      <p className="font-bold text-foreground uppercase tracking-widest text-[10px] mb-2">{label}</p>
       {payload.map((p, i) => (
-        <p key={i} className="text-xs" style={{ color: p.name === "amount" ? "#6366f1" : "#10b981" }}>
+        <p key={i} className="text-sm font-bold" style={{ color: p.name === "amount" ? "#818cf8" : "#34d399" }}>
           {formatCurrency(p.value)}
         </p>
       ))}
@@ -78,24 +78,24 @@ export function Analytics() {
       </div>
 
       {/* Monthly Overview */}
-      <Card>
+      <Card className="glass-card">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">12-Month Expense Trend</CardTitle>
+          <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest">12-Month Expense Trend</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? <Skeleton className="h-52 w-full" /> : (
+          {loading ? <Skeleton className="h-52 w-full rounded-xl" /> : (
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={monthlyData}>
                 <defs>
                   <linearGradient id="grad1" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#818cf8" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#818cf8" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
-                <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="amount" stroke="#6366f1" strokeWidth={2.5} fill="url(#grad1)" dot={{ fill: "#6366f1", r: 3 }} />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'var(--glass-border)', strokeWidth: 1, strokeDasharray: '3 3' }} />
+                <Area type="monotone" dataKey="amount" stroke="#818cf8" strokeWidth={3} fill="url(#grad1)" dot={{ fill: "#0F1322", stroke: "#818cf8", strokeWidth: 2, r: 4 }} activeDot={{ fill: "#818cf8", stroke: "#fff", strokeWidth: 2, r: 6 }} />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -105,18 +105,18 @@ export function Analytics() {
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Monthly Bar Chart */}
-        <Card>
+        <Card className="glass-card">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Monthly Comparison</CardTitle>
+            <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Monthly Comparison</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading ? <Skeleton className="h-44 w-full" /> : (
+            {loading ? <Skeleton className="h-44 w-full rounded-xl" /> : (
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={monthlyData.slice(-6)}>
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="amount" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--glass-bg)' }} />
+                  <Bar dataKey="amount" fill="#818cf8" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -124,21 +124,21 @@ export function Analytics() {
         </Card>
 
         {/* Category Pie */}
-        <Card>
+        <Card className="glass-card">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">This Month by Category</CardTitle>
+            <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest">This Month by Category</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading ? <Skeleton className="h-44 w-full" /> : categoryData.length === 0 ? (
-              <div className="h-44 flex items-center justify-center text-muted-foreground text-sm">No data</div>
+            {loading ? <Skeleton className="h-44 w-full rounded-xl" /> : categoryData.length === 0 ? (
+              <div className="h-44 flex items-center justify-center text-muted-foreground font-medium text-sm">No data</div>
             ) : (
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
-                  <Pie data={categoryData} cx="50%" cy="50%" outerRadius={70} paddingAngle={3} dataKey="value">
+                  <Pie data={categoryData} cx="50%" cy="50%" outerRadius={70} innerRadius={40} paddingAngle={4} dataKey="value" stroke="none">
                     {categoryData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
-                  <Tooltip formatter={(v) => [formatCurrency(Number(v)), '']} />
-                  <Legend iconSize={8} iconType="circle" formatter={(v) => <span style={{ fontSize: 10, color: "#94a3b8" }}>{v}</span>} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend iconSize={8} iconType="circle" formatter={(v) => <span style={{ fontSize: 11, color: "#cbd5e1", fontWeight: 600 }}>{v}</span>} />
                 </PieChart>
               </ResponsiveContainer>
             )}
@@ -147,30 +147,32 @@ export function Analytics() {
       </div>
 
       {/* Top Categories */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Top Spending Categories — This Month</CardTitle>
+      <Card className="glass-card">
+        <CardHeader className="pb-3 border-b border-glass-border">
+          <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Top Spending Categories — This Month</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4 pt-4">
           {loading ? (
             Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 rounded-lg" />)
           ) : topCategories.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">No data for this month</p>
+            <p className="text-sm font-medium text-muted-foreground text-center py-4">No data for this month</p>
           ) : (
             topCategories.map((cat) => (
-              <div key={cat.label}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">{cat.icon}</span>
-                    <span className="text-sm font-medium text-foreground">{cat.label}</span>
+              <div key={cat.label} className="group">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-glass-bg flex items-center justify-center border border-glass-border group-hover:scale-110 transition-transform">
+                      <span className="text-sm">{cat.icon}</span>
+                    </div>
+                    <span className="text-sm font-bold text-foreground">{cat.label}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-foreground">{formatCurrency(cat.amount)}</span>
-                    <span className="text-xs text-muted-foreground w-8 text-right">{cat.percent}%</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-foreground">{formatCurrency(cat.amount)}</span>
+                    <span className="text-xs font-bold text-muted-foreground w-8 text-right bg-glass-bg px-2 py-0.5 rounded-full border border-glass-border">{cat.percent}%</span>
                   </div>
                 </div>
-                <div className="h-2 rounded-full bg-secondary overflow-hidden">
-                  <div className="h-full rounded-full transition-all duration-700" style={{ width: `${cat.percent}%`, backgroundColor: cat.color }} />
+                <div className="h-1.5 rounded-full bg-glass-bg overflow-hidden border border-glass-border">
+                  <div className="h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_currentColor]" style={{ width: `${cat.percent}%`, backgroundColor: cat.color }} />
                 </div>
               </div>
             ))
@@ -179,21 +181,21 @@ export function Analytics() {
       </Card>
 
       {/* Monthly Stats Table */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Monthly Summary Table</CardTitle>
+      <Card className="glass-card overflow-hidden">
+        <CardHeader className="pb-3 border-b border-glass-border bg-glass-bg">
+          <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Monthly Summary Table</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground">Month</th>
-                  <th className="text-right px-5 py-3 text-xs font-medium text-muted-foreground">Amount</th>
-                  <th className="text-right px-5 py-3 text-xs font-medium text-muted-foreground">vs Avg</th>
+                <tr className="border-b border-glass-border bg-[#0F1322]">
+                  <th className="text-left px-5 py-3 text-xs font-bold text-muted-foreground uppercase tracking-widest">Month</th>
+                  <th className="text-right px-5 py-3 text-xs font-bold text-muted-foreground uppercase tracking-widest">Amount</th>
+                  <th className="text-right px-5 py-3 text-xs font-bold text-muted-foreground uppercase tracking-widest">vs Avg</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-white/5">
                 {loading ? (
                   Array.from({ length: 6 }).map((_, i) => (
                     <tr key={i}><td colSpan={3} className="px-5 py-3"><Skeleton className="h-4 w-full" /></td></tr>
@@ -203,11 +205,15 @@ export function Analytics() {
                     const avg = monthlyData.reduce((s, r) => s + r.amount, 0) / (monthlyData.length || 1);
                     const diff = row.amount - avg;
                     return (
-                      <tr key={row.month} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-5 py-3 text-foreground">{formatMonth(row.month)}</td>
-                        <td className="px-5 py-3 text-right font-semibold text-foreground">{formatCurrency(row.amount)}</td>
-                        <td className={`px-5 py-3 text-right text-xs font-medium ${diff > 0 ? "text-red-400" : diff < 0 ? "text-emerald-400" : "text-muted-foreground"}`}>
-                          {diff === 0 ? "—" : `${diff > 0 ? "+" : ""}${formatCurrency(Math.abs(diff))}`}
+                      <tr key={row.month} className="hover:bg-glass-bg transition-colors">
+                        <td className="px-5 py-3 font-semibold text-foreground">{formatMonth(row.month)}</td>
+                        <td className="px-5 py-3 text-right font-bold text-foreground">{formatCurrency(row.amount)}</td>
+                        <td className={`px-5 py-3 text-right text-xs font-bold ${diff > 0 ? "text-red-400" : diff < 0 ? "text-emerald-400" : "text-muted-foreground"}`}>
+                          {diff === 0 ? "—" : (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full border ${diff > 0 ? "bg-red-500/10 border-red-500/20" : "bg-emerald-500/10 border-emerald-500/20"}`}>
+                              {diff > 0 ? "+" : ""}{formatCurrency(Math.abs(diff))}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );
