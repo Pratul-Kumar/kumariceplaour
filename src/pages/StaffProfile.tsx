@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Phone, Calendar, IndianRupee, Award, Scale, Plus, RefreshCw, Landmark } from "lucide-react";
+import { ArrowLeft, Phone, Calendar, IndianRupee, Award } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, Badge, Skeleton, Button } from "@/components/ui";
-import { staffService, salaryService, leaveService, attendanceService, advanceService, employeeLedgerService } from "@/services";
-import { type Staff, type SalaryRecord, type LeaveRecord, type Attendance, type AdvanceRecord, type EmployeeLedgerEntry } from "@/types";
+import { staffService, salaryService, leaveService, attendanceService, advanceService } from "@/services";
+import { type Staff, type SalaryRecord, type LeaveRecord, type Attendance, type AdvanceRecord } from "@/types";
 import { formatCurrency, formatDate, formatMonth, getInitials, generateAvatarColor } from "@/lib/utils";
 
 export function StaffProfile() {
@@ -13,7 +13,6 @@ export function StaffProfile() {
   const [salaryHistory, setSalaryHistory] = useState<SalaryRecord[]>([]);
   const [leaveHistory, setLeaveHistory] = useState<LeaveRecord[]>([]);
   const [advanceHistory, setAdvanceHistory] = useState<AdvanceRecord[]>([]);
-  const [ledgerHistory, setLedgerHistory] = useState<EmployeeLedgerEntry[]>([]);
   const [currentMonthAtt, setCurrentMonthAtt] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"salary" | "leave" | "attendance" | "advance">("salary");
@@ -40,11 +39,6 @@ export function StaffProfile() {
       }
     });
 
-    // Real-time subscription for employee financial ledger
-    const unsubLedger = employeeLedgerService.subscribeByStaff(staffId, (data) => {
-      if (active) setLedgerHistory(data);
-    });
-
     // One-time server fetches for history (salary + leave) — forced from server for freshness
     salaryService.getByStaff(staffId).then((sal) => {
       if (active) setSalaryHistory(sal);
@@ -60,7 +54,6 @@ export function StaffProfile() {
       active = false;
       unsubStaff();
       unsubAtt();
-      unsubLedger();
     };
   }, [id]);
 
@@ -72,37 +65,6 @@ export function StaffProfile() {
   );
 
   if (!staff) return <div className="text-center py-20 text-muted-foreground">Staff not found</div>;
-
-  const ledgerStats = useMemo(() => {
-    let outstandingBalance = 0;
-    let totalAdvances = 0;
-    let totalRecoveries = 0;
-    let pendingRecoveries = 0;
-
-    ledgerHistory.forEach((e) => {
-      if (e.direction === "employee_owes") {
-        outstandingBalance += e.amount;
-        if (e.type === "salary_advance") {
-          totalAdvances += e.amount;
-        }
-        if (e.status !== "settled") {
-          pendingRecoveries += e.amount;
-        }
-      } else {
-        outstandingBalance -= e.amount;
-        if (e.type === "repayment" || e.type === "salary_deduction") {
-          totalRecoveries += e.amount;
-        }
-      }
-    });
-
-    return {
-      outstandingBalance,
-      totalAdvances,
-      totalRecoveries,
-      pendingRecoveries,
-    };
-  }, [ledgerHistory]);
 
   const presentDays = currentMonthAtt.filter((a) => a.status === "present").length;
   const absentDays = currentMonthAtt.filter((a) => a.status === "absent").length;
@@ -191,7 +153,7 @@ export function StaffProfile() {
       <div className="flex flex-wrap rounded-xl bg-muted p-1 gap-1">
         {(["salary", "leave", "attendance", "advance"] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`flex-1 min-w-[100px] py-2 text-sm font-medium rounded-lg capitalize transition-all ${tab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
-            {t === "salary" ? "💰 Salary" : t === "leave" ? "🏖️ Leave" : t === "attendance" ? "📋 Attendance" : "💸 Ledger"}
+            {t === "salary" ? "💰 Salary" : t === "leave" ? "🏖️ Leave" : t === "attendance" ? "📋 Attendance" : "💸 Advances"}
           </button>
         ))}
       </div>
@@ -286,93 +248,34 @@ export function StaffProfile() {
         </Card>
       )}
 
-      {/* Ledger History & Financial Summary */}
+      {/* Advance History */}
       {tab === "advance" && (
-        <div className="space-y-4">
-          {/* Metrics summary cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className={`p-4 rounded-2xl border ${ledgerStats.outstandingBalance > 0 ? "bg-rose-500/10 border-rose-500/20" : "bg-emerald-500/10 border-emerald-500/20"}`}>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Outstanding Balance</p>
-              <p className={`text-lg font-black mt-1 ${ledgerStats.outstandingBalance > 0 ? "text-rose-400" : "text-emerald-400"}`}>
-                {ledgerStats.outstandingBalance > 0 ? `Owes ₹${ledgerStats.outstandingBalance.toLocaleString()}` : "Balanced"}
-              </p>
-            </div>
-            <div className="bg-glass-bg border border-glass-border p-4 rounded-2xl">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total Advances</p>
-              <p className="text-lg font-black text-foreground mt-1">
-                {formatCurrency(ledgerStats.totalAdvances)}
-              </p>
-            </div>
-            <div className="bg-glass-bg border border-glass-border p-4 rounded-2xl">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total Recoveries</p>
-              <p className="text-lg font-black text-emerald-400 mt-1">
-                {formatCurrency(ledgerStats.totalRecoveries)}
-              </p>
-            </div>
-            <div className="bg-glass-bg border border-glass-border p-4 rounded-2xl">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Pending Recoveries</p>
-              <p className="text-lg font-black text-amber-400 mt-1">
-                {formatCurrency(ledgerStats.pendingRecoveries)}
-              </p>
-            </div>
-          </div>
-
-          <Card className="glass-card border-glass-border">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-bold flex items-center gap-2">
-                <Landmark className="h-4 w-4 text-primary" /> Recovery History & Ledger Timeline
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {ledgerHistory.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8 text-sm">No ledger entries recorded yet</p>
-              ) : (
-                <div className="px-5 py-4 space-y-6 relative before:absolute before:left-[27px] before:top-6 before:bottom-6 before:w-0.5 before:bg-glass-border">
-                  {ledgerHistory.map((item) => {
-                    const isCredit = item.direction === "store_owes";
-                    return (
-                      <div key={item.id} className="flex gap-4 relative items-start">
-                        {/* Dot container */}
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 border relative z-10 ${
-                          isCredit ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-rose-500/10 border-rose-500/30 text-rose-400"
-                        }`}>
-                          <div className={`w-2 h-2 rounded-full ${isCredit ? "bg-emerald-400" : "bg-rose-400"}`} />
-                        </div>
-                        
-                        {/* Content */}
-                        <div className="flex-1 min-w-0 bg-glass-bg/50 border border-glass-border/30 rounded-xl p-3.5 hover:bg-glass-bg transition-colors">
-                          <div className="flex items-start justify-between gap-3 flex-wrap">
-                            <div>
-                              <p className="text-sm font-bold text-foreground capitalize">
-                                {item.type.replace("_", " ")}
-                              </p>
-                              <span className="text-[10px] font-semibold text-muted-foreground">
-                                {formatDate(item.createdAt)}
-                              </span>
-                            </div>
-                            <div className="text-right">
-                              <p className={`text-sm font-black ${isCredit ? "text-emerald-400" : "text-rose-400"}`}>
-                                {isCredit ? "-" : "+"}{formatCurrency(item.amount)}
-                              </p>
-                              <Badge variant={item.status === "settled" ? "success" : item.status === "partial" ? "warning" : "destructive"} className="text-[9px] uppercase tracking-wider px-1.5 py-0">
-                                {item.status}
-                              </Badge>
-                            </div>
-                          </div>
-                          {item.notes && (
-                            <p className="text-xs text-muted-foreground italic mt-2 border-t border-glass-border/20 pt-1.5 truncate">
-                              "{item.notes}"
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Advances & Deductions</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            {advanceHistory.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8 text-sm">No advance records yet</p>
+            ) : (
+              <div className="divide-y divide-border">
+                {advanceHistory.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between px-5 py-4">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{formatDate(a.date)}</p>
+                      {a.reason && <p className="text-xs text-muted-foreground/70 italic mt-0.5">{a.reason}</p>}
+                      {a.status === "deducted" && a.deductedInMonth && (
+                        <p className="text-xs text-emerald-400 mt-1">Recovered in {formatMonth(a.deductedInMonth)}</p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-foreground">{formatCurrency(a.amount)}</p>
+                      <Badge variant={a.status === "deducted" ? "success" : "warning"}>{a.status}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );

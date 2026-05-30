@@ -5,7 +5,7 @@ import {
   IndianRupee, Receipt, Zap, AlertCircle
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, Skeleton, Badge, EmptyState } from "@/components/ui";
-import { expenseService, staffService, salaryService, leaveService, advanceService, employeeLedgerService } from "@/services";
+import { expenseService, staffService, salaryService, leaveService, advanceService } from "@/services";
 import { formatCurrency, formatDate, getCurrentMonth, getLast12Months, formatMonth } from "@/lib/utils";
 import { EXPENSE_CATEGORIES, type Expense } from "@/types";
 
@@ -18,7 +18,7 @@ interface DashboardStats {
   todayExpenses: number;
   monthExpenses: number;
   pendingSalary: number;
-  outstandingRecoveries: number;
+  pendingAdvances: number;
   staffCount: number;
   todayLeaves: number;
   recentExpenses: Expense[];
@@ -69,7 +69,7 @@ export function Dashboard() {
     todayExpenses: 0,
     monthExpenses: 0,
     pendingSalary: 0,
-    outstandingRecoveries: 0,
+    pendingAdvances: 0,
     staffCount: 0,
     todayLeaves: 0,
     recentExpenses: [],
@@ -109,22 +109,14 @@ export function Dashboard() {
     });
 
     const unsubSalary = salaryService.subscribePending((data) => {
+      // Filter out invalid records where remainingDue might be 0 but status is pending
       const pendingTotal = data.filter(r => r.remainingDue > 0).reduce((sum, r) => sum + r.remainingDue, 0);
       setStats(prev => ({ ...prev, pendingSalary: pendingTotal }));
     });
 
-    const unsubLedger = employeeLedgerService.subscribeAll((data) => {
-      const staffBalances: Record<string, number> = {};
-      data.forEach((e) => {
-        const amt = e.amount;
-        const change = e.direction === "employee_owes" ? amt : -amt;
-        staffBalances[e.staffId] = (staffBalances[e.staffId] || 0) + change;
-      });
-      let totalOutstanding = 0;
-      Object.values(staffBalances).forEach((bal) => {
-        if (bal > 0) totalOutstanding += bal;
-      });
-      setStats(prev => ({ ...prev, outstandingRecoveries: totalOutstanding }));
+    const unsubAdvances = advanceService.subscribeAll((data) => {
+      const pendingTotal = data.filter(a => a.status === "pending").reduce((sum, a) => sum + a.amount, 0);
+      setStats(prev => ({ ...prev, pendingAdvances: pendingTotal }));
     });
 
     // Today's leave count — live listener so it updates cross-device
@@ -133,6 +125,7 @@ export function Dashboard() {
     });
 
     // Monthly trend — updated whenever current month snapshot fires
+    // For past 6 months: use getDocs (historical, stable data)
     const months = getLast12Months().slice(-6);
     Promise.all(
       months.map(m =>
@@ -153,7 +146,7 @@ export function Dashboard() {
       unsubExpenses();
       unsubStaff();
       unsubSalary();
-      unsubLedger();
+      unsubAdvances();
       unsubLeaves();
     };
   }, []);
@@ -194,7 +187,7 @@ export function Dashboard() {
         <StatCard icon={TrendingDown} label="Today's Spend" value={formatCurrency(stats.todayExpenses)} sub="Today" color="bg-red-500" loading={loading} onClick={() => navigate('/expenses')} />
         <StatCard icon={Receipt} label="This Month" value={formatCurrency(stats.monthExpenses)} sub={formatMonth(getCurrentMonth())} color="bg-violet-500" loading={loading} onClick={() => navigate('/expenses')} />
         <StatCard icon={IndianRupee} label="Salary Due" value={formatCurrency(stats.pendingSalary)} sub="Unpaid" color="bg-amber-500" loading={loading} onClick={() => navigate('/salary')} />
-        <StatCard icon={Zap} label="Outstanding Dues" value={formatCurrency(stats.outstandingRecoveries)} sub="Recoveries" color="bg-rose-500" loading={loading} onClick={() => navigate('/ledger')} />
+        <StatCard icon={Zap} label="Advances" value={formatCurrency(stats.pendingAdvances)} sub="Pending" color="bg-rose-500" loading={loading} />
         <StatCard icon={Users} label="Staff" value={String(stats.staffCount)} sub="Total active" color="bg-emerald-500" loading={loading} onClick={() => navigate('/staff')} />
         <StatCard icon={CalendarOff} label="On Leave" value={String(stats.todayLeaves)} sub="Today" color="bg-pink-500" loading={loading} onClick={() => navigate('/leaves')} />
       </div>

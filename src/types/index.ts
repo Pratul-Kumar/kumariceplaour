@@ -78,6 +78,7 @@ export interface SalaryRecord {
   remainingDue: number;
   status: "pending" | "partial" | "paid";
   advanceIds?: string[]; // tracks which advances were recovered in this salary
+  rolloverAdvanceId?: string; // tracks any rollover advance created
   note?: string;
   createdAt: string;
   updatedAt: string;
@@ -109,28 +110,6 @@ export interface AdvanceRecord {
   deductedInMonth?: string;
   createdAt: string;
   updatedAt: string;
-}
-
-// ============================================================
-// EMPLOYEE LEDGER RECORD
-// ============================================================
-export interface EmployeeLedgerEntry {
-  id?: string;
-  staffId: string;
-  type:
-    | "salary_advance"
-    | "repayment"
-    | "manual_adjustment"
-    | "salary_deduction"
-    | "salary_adjustment";
-  amount: number;
-  direction: "employee_owes" | "store_owes";
-  status: "pending" | "partial" | "settled";
-  linkedSalaryId?: string;
-  linkedExpenseId?: string;
-  notes?: string;
-  createdBy: string;
-  createdAt: string; // ISO string matching existing records
 }
 
 // ============================================================

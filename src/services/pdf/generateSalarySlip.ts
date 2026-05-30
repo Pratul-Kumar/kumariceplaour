@@ -6,7 +6,6 @@ import { formatDate, formatMonth } from "@/lib/utils";
 import type { SalaryRecord, Staff, SalaryPayment, AdvanceRecord } from "@/types";
 import { doc as firestoreDoc, getDoc } from "firebase/firestore";
 import { db } from "@/firebase/config";
-import { employeeLedgerService } from "../index";
 
 export async function generateSalarySlip(
   staff: Staff,
@@ -50,13 +49,11 @@ export async function generateSalarySlip(
   // ── Earnings & Deductions Table ──────────────────────────────────────────
   y = drawSectionTitle(doc, y, "Earnings & Deductions");
 
-  const outstandingBal = await employeeLedgerService.getOutstandingBalance(staff.id!);
-
   const baseSalaryLabel = staff.salaryType === "monthly" ? "Monthly Base Salary" : "Daily Wage (Earned)";
   const tableHead = [["Earnings", "Amount (Rs.)", "Deductions", "Amount (Rs.)"]];
   const tableBody = [
     [baseSalaryLabel, pdfCurrency(record.baseSalary), "Leave Deduction",  pdfCurrency(record.leaveDeduction)],
-    ["Bonus",          pdfCurrency(record.bonus),      "Advance Recovery", pdfCurrency(record.advance)],
+    ["Bonus",          pdfCurrency(record.bonus),      "Salary Advance",   pdfCurrency(record.advance)],
     ["Overtime Pay",   pdfCurrency(record.overtime),   "Extra Deduction",  pdfCurrency(record.extraDeduction)],
   ];
 
@@ -75,9 +72,11 @@ export async function generateSalarySlip(
   const remaining       = record.remainingDue;
 
   y = drawStatCards(doc, y, [
-    { label: "Net Paid Salary",  value: pdfCurrency(record.totalPaid),   color: COLORS.accent },
+    { label: "Net Salary",       value: pdfCurrency(record.finalSalary), color: COLORS.primary },
+    { label: "Prev. Pending",    value: pdfCurrency(previousPending),    color: COLORS.warning },
+    { label: "Total Payable",    value: pdfCurrency(totalPayable),       color: COLORS.primaryDark },
+    { label: "Total Paid",       value: pdfCurrency(record.totalPaid),   color: COLORS.accent },
     { label: "Balance Due",      value: pdfCurrency(remaining),          color: remaining > 0 ? COLORS.danger : COLORS.accent },
-    { label: "Oustanding Debt",  value: outstandingBal > 0 ? `Owes: ₹${outstandingBal}` : `Owes: ₹0`, color: outstandingBal > 0 ? COLORS.danger : COLORS.accent },
   ]);
 
   // ── Payment History ──────────────────────────────────────────────────────

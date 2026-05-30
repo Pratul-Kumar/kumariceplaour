@@ -16,25 +16,33 @@ const LeaveManagement = lazy(() => import("@/pages/LeaveManagement").then(m => (
 const Analytics = lazy(() => import("@/pages/Analytics").then(m => ({ default: m.Analytics })));
 const Settings = lazy(() => import("@/pages/Settings").then(m => ({ default: m.Settings })));
 const HistoryReports = lazy(() => import("@/pages/HistoryReports").then(m => ({ default: m.HistoryReports })));
-const EmployeeLedger = lazy(() => import("@/pages/EmployeeLedger").then(m => ({ default: m.EmployeeLedger })));
 
 const FullPageLoader = ({ message = "Connecting to Cloud..." }: { message?: string }) => (
-  <div className="h-screen w-full flex items-center justify-center bg-background">
-    <div className="flex flex-col items-center gap-5">
-      {/* Logo with neon ring */}
-      <div className="relative">
-        <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 opacity-25 blur-xl scale-110" />
-        <div className="relative w-16 h-16 rounded-2xl flex items-center justify-center"
-          style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)" }}
-        >
-          <img src="/logo.png" alt="Logo" className="w-10 h-10 object-contain" />
+  <div className="h-screen w-full flex items-center justify-center bg-background relative overflow-hidden">
+    {/* Ambient background glows */}
+    <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-[120px] animate-pulse" />
+    <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-violet-600/10 rounded-full blur-[120px] animate-pulse delay-700" />
+    
+    <div className="flex flex-col items-center gap-6 relative z-10">
+      {/* Premium Multi-Ring Spinner & Logo Container */}
+      <div className="relative w-24 h-24 flex items-center justify-center">
+        {/* Outer glowing gradient ring */}
+        <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-indigo-500 border-r-violet-500 animate-spin" style={{ animationDuration: '1.5s' }} />
+        
+        {/* Inner reverse-rotating ring */}
+        <div className="absolute inset-2 rounded-full border border-transparent border-b-cyan-400 border-l-pink-500 animate-spin" style={{ animationDuration: '1s', animationDirection: 'reverse' }} />
+        
+        {/* Central glowing core logo */}
+        <div className="relative w-14 h-14 rounded-full bg-card/40 backdrop-blur-md border border-white/10 flex items-center justify-center shadow-inner animate-pulse">
+          <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
         </div>
       </div>
-      {/* Neon spinner */}
-      <div className="animate-spin rounded-full h-7 w-7"
-        style={{ border: "2px solid rgba(99,102,241,0.15)", borderTopColor: "#6366f1", boxShadow: "0 0 12px rgba(99,102,241,0.5)" }}
-      />
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">{message}</p>
+
+      {/* Elegant Typography and Loading Message */}
+      <div className="flex flex-col items-center gap-1.5 text-center">
+        <p className="text-xs font-bold text-foreground/80 uppercase tracking-[0.25em] animate-pulse">{message}</p>
+        <span className="text-[10px] text-muted-foreground/60 tracking-wider">Please wait a moment</span>
+      </div>
     </div>
   </div>
 );
@@ -65,11 +73,14 @@ export function App() {
                 <Layout>
                   <Suspense fallback={
                     <div className="h-[50vh] w-full flex items-center justify-center">
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="animate-spin rounded-full h-6 w-6"
-                          style={{ border: "2px solid rgba(99,102,241,0.15)", borderTopColor: "#6366f1", boxShadow: "0 0 10px rgba(99,102,241,0.4)" }}
-                        />
-                        <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest">Loading...</p>
+                      <div className="flex flex-col items-center gap-4 animate-pulse">
+                        <div className="relative w-16 h-16 flex items-center justify-center">
+                          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-indigo-500 border-r-violet-500 animate-spin" style={{ animationDuration: '1.2s' }} />
+                          <div className="relative w-9 h-9 rounded-full bg-card/40 backdrop-blur-md border border-white/10 flex items-center justify-center">
+                            <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-ping" />
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em]">Loading Module...</p>
                       </div>
                     </div>
                   }>
@@ -77,7 +88,6 @@ export function App() {
                       <Route path="/" element={<Dashboard />} />
                       <Route path="/staff" element={<StaffManagement />} />
                       <Route path="/staff/:id" element={<StaffProfile />} />
-                      <Route path="/ledger" element={<EmployeeLedger />} />
                       <Route path="/attendance" element={<AttendanceManagement />} />
                       <Route path="/expenses" element={<ExpenseManagement />} />
                       <Route path="/salary" element={<SalaryManagement />} />
