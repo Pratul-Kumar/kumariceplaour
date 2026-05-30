@@ -3,7 +3,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Receipt, IndianRupee, CalendarOff,
   Settings, X, Menu, TrendingUp, ClipboardCheck, LogOut,
-  Cloud, CloudOff, History, ChevronRight
+  Cloud, CloudOff, History, ChevronRight, Wallet
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -13,6 +13,7 @@ import { signOut } from "firebase/auth";
 const NAV_ITEMS = [
   { to: "/",          icon: LayoutDashboard, label: "Dashboard",  color: "from-violet-500 to-indigo-500" },
   { to: "/staff",     icon: Users,           label: "Staff",      color: "from-blue-500 to-cyan-500" },
+  { to: "/ledger",    icon: Wallet,          label: "Ledger",     color: "from-teal-500 to-emerald-500" },
   { to: "/attendance",icon: ClipboardCheck,  label: "Attendance", color: "from-emerald-500 to-teal-500" },
   { to: "/expenses",  icon: Receipt,         label: "Expenses",   color: "from-rose-500 to-pink-500" },
   { to: "/salary",    icon: IndianRupee,     label: "Salary",     color: "from-amber-500 to-orange-500" },

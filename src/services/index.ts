@@ -2,8 +2,8 @@ import {
   collection, doc, getDocs, addDoc, updateDoc, deleteDoc,
   query, where, orderBy, onSnapshot, limit, runTransaction, getDoc
 } from "firebase/firestore";
-import { db } from "@/firebase/config";
-import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, LeaveRecord, AdvanceRecord, AppSettings } from "@/types";
+import { db, auth } from "@/firebase/config";
+import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, LeaveRecord, AdvanceRecord, AppSettings, EmployeeLedgerEntry, TemporaryStaff } from "@/types";
 
 const mapDoc = <T>(d: any): T => ({ id: d.id, ...d.data() } as T);
 
@@ -203,6 +203,8 @@ export const expenseService = {
       return runTransaction(db, async (tx) => {
         const expenseRef = doc(expensesCol);
         const advanceRef = doc(collection(db, "advanceRecords"));
+        const ledgerRef = doc(collection(db, "employee_ledger"));
+        
         tx.set(expenseRef, { ...data, createdAt: now, updatedAt: now });
         tx.set(advanceRef, {
           staffId: data.staffId,
@@ -214,6 +216,17 @@ export const expenseService = {
           status: "pending",
           createdAt: now,
           updatedAt: now
+        });
+        tx.set(ledgerRef, {
+          staffId: data.staffId,
+          type: "salary_advance",
+          amount: data.amount,
+          direction: "employee_owes",
+          status: "pending",
+          linkedExpenseId: expenseRef.id,
+          notes: data.note || "Salary Advance",
+          createdBy: auth.currentUser?.email || "system",
+          createdAt: now
         });
         return expenseRef;
       });
@@ -227,6 +240,7 @@ export const expenseService = {
     const now = new Date().toISOString();
     
     if (data.category === "salary_advance" || data.amount !== undefined) {
+      // Sync advanceRecords
       const q = query(collection(db, "advanceRecords"), where("expenseId", "==", id));
       const snap = await getDocs(q);
       if (!snap.empty) {
@@ -241,6 +255,22 @@ export const expenseService = {
         if (data.note !== undefined) updates.reason = data.note;
         await updateDoc(advDoc.ref, updates);
       }
+
+      // Sync employee_ledger
+      const ledgerQ = query(collection(db, "employee_ledger"), where("linkedExpenseId", "==", id));
+      const ledgerSnap = await getDocs(ledgerQ);
+      if (!ledgerSnap.empty) {
+        const ledgerDoc = ledgerSnap.docs[0];
+        const ledgerData = ledgerDoc.data();
+        if (ledgerData.status !== "pending") {
+          throw new Error("Cannot edit a salary advance that has been partially or fully settled.");
+        }
+        const updates: any = {};
+        if (data.amount !== undefined) updates.amount = data.amount;
+        if (data.staffId !== undefined) updates.staffId = data.staffId;
+        if (data.note !== undefined) updates.notes = data.note;
+        await updateDoc(ledgerDoc.ref, updates);
+      }
     }
 
     return updateDoc(doc(db, "expenses", id), { ...data, updatedAt: now });
@@ -252,6 +282,16 @@ export const expenseService = {
     const snap = await getDocs(q);
     if (!snap.empty) {
       await deleteDoc(snap.docs[0].ref);
+    }
+    const ledgerQ = query(collection(db, "employee_ledger"), where("linkedExpenseId", "==", id));
+    const ledgerSnap = await getDocs(ledgerQ);
+    if (!ledgerSnap.empty) {
+      const ledgerDoc = ledgerSnap.docs[0];
+      const ledgerData = ledgerDoc.data();
+      if (ledgerData.status !== "pending") {
+        throw new Error("Cannot delete a salary advance that has been partially or fully settled.");
+      }
+      await deleteDoc(ledgerDoc.ref);
     }
     return deleteDoc(doc(db, "expenses", id));
   },
@@ -374,9 +414,64 @@ export const salaryService = {
 
   // ── Writes ──────────────────────────────────────────────────────────────────
 
-  addRecord: async (data: Omit<SalaryRecord, "id" | "createdAt" | "updatedAt">) => {
+  addRecord: async (data: Omit<SalaryRecord, "id" | "createdAt" | "updatedAt"> & { recoveryAmount?: number }) => {
     const now = new Date().toISOString();
-    return addDoc(salaryCol, { ...data, createdAt: now, updatedAt: now });
+    const recoveryAmt = data.recoveryAmount || 0;
+
+    return runTransaction(db, async (tx) => {
+      const salaryRef = doc(salaryCol);
+      
+      // 1. Create the salary record
+      tx.set(salaryRef, {
+        ...data,
+        createdAt: now,
+        updatedAt: now
+      });
+
+      // 2. If there is a recovery amount, handle ledger deduction
+      if (recoveryAmt > 0) {
+        const ledgerRef = doc(collection(db, "employee_ledger"));
+        tx.set(ledgerRef, {
+          staffId: data.staffId,
+          type: "salary_deduction",
+          amount: recoveryAmt,
+          direction: "store_owes",
+          status: "settled",
+          linkedSalaryId: salaryRef.id,
+          notes: `Payroll recovery deduction for salary period ${data.month}/${data.year}`,
+          createdBy: auth.currentUser?.email || "system",
+          createdAt: now
+        });
+
+        // 3. Reconcile older outstanding debt entries
+        const pendingQ = query(
+          collection(db, "employee_ledger"),
+          where("staffId", "==", data.staffId),
+          where("status", "in", ["pending", "partial"])
+        );
+        const pendingSnap = await getDocs(pendingQ);
+        const pendingEntries = pendingSnap.docs
+          .map(mapDoc<EmployeeLedgerEntry>)
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+        let remainingDeduction = recoveryAmt;
+        for (const entry of pendingEntries) {
+          if (remainingDeduction <= 0) break;
+          if (entry.direction !== "employee_owes") continue;
+
+          const entryRef = doc(db, "employee_ledger", entry.id!);
+          if (remainingDeduction >= entry.amount) {
+            tx.update(entryRef, { status: "settled" });
+            remainingDeduction -= entry.amount;
+          } else {
+            tx.update(entryRef, { status: "partial" });
+            remainingDeduction = 0;
+          }
+        }
+      }
+
+      return salaryRef;
+    });
   },
 
   updateRecord: async (id: string, data: Partial<SalaryRecord>) =>
@@ -388,6 +483,32 @@ export const salaryService = {
     const snap = await getDocs(q);
     const deletes = snap.docs.map(d => deleteDoc(d.ref));
     await Promise.all(deletes);
+
+    // Delete linked ledger entries and restore statuses of older ledger entries
+    const ledgerQ = query(collection(db, "employee_ledger"), where("linkedSalaryId", "==", id));
+    const ledgerSnap = await getDocs(ledgerQ);
+    if (!ledgerSnap.empty) {
+      for (const d of ledgerSnap.docs) {
+        const ledgerData = d.data();
+        const staffId = ledgerData.staffId;
+
+        // Restore older settled/partial ledger entries for this employee to pending
+        const settledQ = query(
+          collection(db, "employee_ledger"),
+          where("staffId", "==", staffId),
+          where("status", "in", ["settled", "partial"])
+        );
+        const settledSnap = await getDocs(settledQ);
+        for (const sDoc of settledSnap.docs) {
+          const sData = sDoc.data();
+          if (sData.direction === "employee_owes" && sData.type !== "salary_deduction") {
+            await updateDoc(sDoc.ref, { status: "pending" });
+          }
+        }
+        await deleteDoc(d.ref);
+      }
+    }
+
     return deleteDoc(doc(db, "salaryRecords", id));
   },
 
@@ -517,12 +638,30 @@ export const leaveService = {
   },
 };
 
-// ─── STUBS ────────────────────────────────────────────────────────────────────
+// ─── TEMP STAFF SERVICE ───────────────────────────────────────────────────────
+const tempStaffCol = collection(db, "temp_staff");
+
 export const tempStaffService = {
-  getAll: async () => [] as any[],
-  add: async () => {},
-  update: async () => {},
-  delete: async () => {},
+  getAll: async () => {
+    const snap = await getDocs(tempStaffCol);
+    return snap.docs.map(mapDoc<TemporaryStaff>);
+  },
+  getByMonth: async (monthStr: string) => {
+    const q = query(tempStaffCol, where("date", ">=", `${monthStr}-01`), where("date", "<=", `${monthStr}-31`));
+    const snap = await getDocs(q);
+    return snap.docs.map(mapDoc<TemporaryStaff>);
+  },
+  add: async (data: Omit<TemporaryStaff, "id" | "createdAt" | "updatedAt">) => {
+    const now = new Date().toISOString();
+    return addDoc(tempStaffCol, { ...data, createdAt: now, updatedAt: now });
+  },
+  update: async (id: string, data: Partial<TemporaryStaff>) => {
+    const now = new Date().toISOString();
+    return updateDoc(doc(db, "temp_staff", id), { ...data, updatedAt: now });
+  },
+  delete: async (id: string) => {
+    return deleteDoc(doc(db, "temp_staff", id));
+  },
 };
 
 const settingsCol = collection(db, "settings");
@@ -593,4 +732,77 @@ export const advanceService = {
     const now = new Date().toISOString();
     return addDoc(advancesCol, { ...data, createdAt: now, updatedAt: now });
   }
+};
+
+// ─── EMPLOYEE LEDGER SERVICE ──────────────────────────────────────────────────
+const employeeLedgerCol = collection(db, "employee_ledger");
+
+export const employeeLedgerService = {
+  subscribeByStaff: (staffId: string, cb: (d: EmployeeLedgerEntry[]) => void) => {
+    const q = query(employeeLedgerCol, where("staffId", "==", staffId));
+    return onSnapshot(
+      q,
+      (s) => {
+        const entries = s.docs.map(mapDoc<EmployeeLedgerEntry>);
+        entries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        cb(entries);
+      },
+      (err) => console.error("[employeeLedgerService.subscribeByStaff]", err.message)
+    );
+  },
+
+  subscribeAll: (cb: (d: EmployeeLedgerEntry[]) => void) => {
+    return onSnapshot(
+      employeeLedgerCol,
+      (s) => {
+        const entries = s.docs.map(mapDoc<EmployeeLedgerEntry>);
+        entries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        cb(entries);
+      },
+      (err) => console.error("[employeeLedgerService.subscribeAll]", err.message)
+    );
+  },
+
+  getPendingByStaff: async (staffId: string) => {
+    const q = query(
+      employeeLedgerCol,
+      where("staffId", "==", staffId),
+      where("status", "in", ["pending", "partial"])
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(mapDoc<EmployeeLedgerEntry>);
+  },
+
+  getOutstandingBalance: async (staffId: string): Promise<number> => {
+    const q = query(employeeLedgerCol, where("staffId", "==", staffId));
+    const snap = await getDocs(q);
+    const entries = snap.docs.map(mapDoc<EmployeeLedgerEntry>);
+    let balance = 0;
+    entries.forEach((e) => {
+      if (e.direction === "employee_owes") {
+        balance += e.amount;
+      } else {
+        balance -= e.amount;
+      }
+    });
+    return balance;
+  },
+
+  add: async (data: Omit<EmployeeLedgerEntry, "id" | "createdAt">) => {
+    const now = new Date().toISOString();
+    return addDoc(employeeLedgerCol, { ...data, createdAt: now });
+  },
+
+  update: async (id: string, data: Partial<EmployeeLedgerEntry>) => {
+    return updateDoc(doc(db, "employee_ledger", id), data);
+  },
+
+  delete: async (id: string) => {
+    const ref = doc(db, "employee_ledger", id);
+    const snap = await getDoc(ref);
+    if (snap.exists() && snap.data().status === "settled" && snap.data().type === "salary_deduction") {
+      throw new Error("Cannot delete a settled salary recovery.");
+    }
+    return deleteDoc(ref);
+  },
 };

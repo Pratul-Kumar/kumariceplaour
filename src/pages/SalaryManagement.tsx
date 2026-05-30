@@ -10,8 +10,8 @@ import {
 import { Button, Input, Card, CardContent, Badge, EmptyState, Spinner, Skeleton } from "@/components/ui";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { staffService, salaryService, attendanceService, advanceService } from "@/services";
-import { type Staff, type SalaryRecord, type SalaryPayment, type AdvanceRecord, calculateSalary } from "@/types";
+import { staffService, salaryService, attendanceService, advanceService, employeeLedgerService } from "@/services";
+import { type Staff, type SalaryRecord, type SalaryPayment, type AdvanceRecord, type EmployeeLedgerEntry, calculateSalary } from "@/types";
 import { formatCurrency, formatMonth, getCurrentMonth, formatDate } from "@/lib/utils";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
@@ -19,7 +19,8 @@ const salarySchema = z.object({
   staffId: z.string().min(1, "Select a staff member"),
   month: z.string().min(1, "Month required"),
   bonus: z.preprocess((v) => Number(v) || 0, z.number().min(0)).default(0),
-  advance: z.preprocess((v) => Number(v) || 0, z.number().min(0)).default(0),
+  recoveryOption: z.enum(["full", "partial", "skip"]).default("full"),
+  recoveryAmount: z.preprocess((v) => Number(v) || 0, z.number().min(0)).default(0),
   extraDeduction: z.preprocess((v) => Number(v) || 0, z.number().min(0)).default(0),
   note: z.string().optional(),
 });
@@ -246,6 +247,7 @@ export function SalaryManagement() {
   const [selectedRecord, setSelectedRecord] = useState<SalaryRecord | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [outstandingRecovery, setOutstandingRecovery] = useState(0);
   const [previewCalc, setPreviewCalc] = useState<ReturnType<typeof calculateSalary> | null>(null);
   const [previewDue, setPreviewDue] = useState(0); // previous due shown in preview
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -258,7 +260,7 @@ export function SalaryManagement() {
     formState: { errors: errGen },
   } = useForm<SalaryFormData>({
     resolver: zodResolver(salarySchema),
-    defaultValues: { month: getCurrentMonth(), bonus: 0, advance: 0, extraDeduction: 0 },
+    defaultValues: { month: getCurrentMonth(), bonus: 0, recoveryOption: "full", recoveryAmount: 0, extraDeduction: 0 },
   });
 
   const {
@@ -273,7 +275,8 @@ export function SalaryManagement() {
   const watchedStaffId = watchGen("staffId");
   const watchedMonth   = watchGen("month");
   const watchedBonus   = watchGen("bonus");
-  const watchedAdvance = watchGen("advance");
+  const watchedRecoveryOption = watchGen("recoveryOption");
+  const watchedRecoveryAmount = watchGen("recoveryAmount");
   const watchedExtra   = watchGen("extraDeduction");
 
   // ── Staff subscription (stable) ──
@@ -304,17 +307,22 @@ export function SalaryManagement() {
       try {
         const [yrStr, moStr] = watchedMonth.split("-");
         const daysInMonth = new Date(Number(yrStr), Number(moStr), 0).getDate();
-        const [attRecords, lastUnpaid, pendingAdvances] = await Promise.all([
+        const [attRecords, lastUnpaid, outstandingBal] = await Promise.all([
           attendanceService.getByStaffAndMonth(watchedStaffId, watchedMonth),
           salaryService.getLastUnpaidRecord(watchedStaffId, Number(yrStr), Number(moStr)),
-          advanceService.getPendingByStaff(watchedStaffId)
+          employeeLedgerService.getOutstandingBalance(watchedStaffId)
         ]);
         const prevDue = lastUnpaid?.remainingDue || 0;
-        const autoAdvanceAmount = pendingAdvances.reduce((sum, a) => sum + a.amount, 0);
-        
-        // Auto-fill advance field if it's 0 to show the recovered amount
-        if (Number(watchedAdvance) === 0 && autoAdvanceAmount > 0) {
-          setGenValue("advance", autoAdvanceAmount);
+        const currentOutstanding = outstandingBal > 0 ? outstandingBal : 0;
+        setOutstandingRecovery(currentOutstanding);
+
+        let finalRecovery = 0;
+        if (currentOutstanding > 0) {
+          if (watchedRecoveryOption === "full") {
+            finalRecovery = currentOutstanding;
+          } else if (watchedRecoveryOption === "partial") {
+            finalRecovery = Number(watchedRecoveryAmount) || 0;
+          }
         }
 
         const result = calculateSalary({
@@ -322,18 +330,26 @@ export function SalaryManagement() {
           attendanceRecords: attRecords,
           workingDaysInMonth: daysInMonth,
           bonus: Number(watchedBonus) || 0,
-          advance: Number(watchedAdvance) || autoAdvanceAmount,
+          advance: finalRecovery,
           extraDeduction: Number(watchedExtra) || 0,
         });
+
+        // Set recoveryAmount field automatically if "full" option is selected
+        if (watchedRecoveryOption === "full") {
+          setGenValue("recoveryAmount", currentOutstanding);
+        } else if (watchedRecoveryOption === "skip") {
+          setGenValue("recoveryAmount", 0);
+        }
+
         setPreviewCalc(result);
         setPreviewDue(prevDue);
-      } catch {
-        // Preview errors are non-critical — just clear it
+      } catch (e) {
+        console.error("[SalaryManagement.previewEffect]", e);
         setPreviewCalc(null);
       }
     }, 400);
     return () => { if (previewTimer.current) clearTimeout(previewTimer.current); };
-  }, [watchedStaffId, watchedMonth, watchedBonus, watchedAdvance, watchedExtra, staffList]);
+  }, [watchedStaffId, watchedMonth, watchedBonus, watchedRecoveryOption, watchedRecoveryAmount, watchedExtra, staffList, setGenValue]);
 
   // ── Totals ──
   const { totalPaid, totalDue } = useMemo(() => ({
@@ -343,8 +359,8 @@ export function SalaryManagement() {
 
   // ── Handlers ──
   const openGenerate = useCallback(() => {
-    setPreviewCalc(null); setPreviewDue(0);
-    resetGen({ month: filterMonth, bonus: 0, advance: 0, extraDeduction: 0 });
+    setPreviewCalc(null); setPreviewDue(0); setOutstandingRecovery(0);
+    resetGen({ month: filterMonth, bonus: 0, recoveryOption: "full", recoveryAmount: 0, extraDeduction: 0 });
     setGenerateModalOpen(true);
   }, [filterMonth, resetGen]);
 
@@ -372,24 +388,38 @@ export function SalaryManagement() {
       }
 
       const daysInMonth = new Date(year, month, 0).getDate();
-      const [attRecords, lastUnpaid, pendingAdvances] = await Promise.all([
+      const [attRecords, lastUnpaid] = await Promise.all([
         attendanceService.getByStaffAndMonth(data.staffId, data.month),
         salaryService.getLastUnpaidRecord(data.staffId, year, month),
-        advanceService.getPendingByStaff(data.staffId)
       ]);
 
       const previousDue = lastUnpaid?.remainingDue || 0;
-      const advanceIds = pendingAdvances.map(a => a.id!);
-      const autoAdvanceAmount = pendingAdvances.reduce((sum, a) => sum + a.amount, 0);
+      
+      let finalRecovery = 0;
+      if (outstandingRecovery > 0) {
+        if (data.recoveryOption === "full") {
+          finalRecovery = outstandingRecovery;
+        } else if (data.recoveryOption === "partial") {
+          finalRecovery = data.recoveryAmount;
+        }
+      }
+
+      if (finalRecovery > outstandingRecovery) {
+        throw new Error(`Recovery amount exceeds outstanding balance of ${formatCurrency(outstandingRecovery)}`);
+      }
 
       const calc = calculateSalary({
         staff,
         attendanceRecords: attRecords,
         workingDaysInMonth: daysInMonth,
         bonus: data.bonus,
-        advance: data.advance || autoAdvanceAmount,
+        advance: finalRecovery,
         extraDeduction: data.extraDeduction,
       });
+
+      if (calc.finalSalary < 0) {
+        throw new Error(`Recovery deduction makes Net Payable Salary negative (${formatCurrency(calc.finalSalary)}). Please choose a lower recovery amount or skip recovery.`);
+      }
 
       const now = new Date().toISOString();
       await salaryService.addRecord({
@@ -398,7 +428,7 @@ export function SalaryManagement() {
         year,
         baseSalary: staff.salaryType === "monthly" ? staff.monthlySalary : staff.dailyWage,
         bonus: data.bonus,
-        advance: data.advance,
+        advance: finalRecovery, // Store recovered amount in standard advance field
         leaveDeduction: calc.leaveDeductionAmount,
         extraDeduction: data.extraDeduction,
         overtime: calc.overtimeAmount,
@@ -407,9 +437,9 @@ export function SalaryManagement() {
         totalPaid: 0,
         remainingDue: calc.finalSalary + previousDue,
         status: "pending",
-        advanceIds,
         note: data.note,
         updatedAt: now,
+        recoveryAmount: finalRecovery, // Transmitted for backend ledger allocations
       } as any);
 
       toast({
@@ -621,15 +651,69 @@ export function SalaryManagement() {
               />
             </div>
 
-            {/* Bonus / Advance */}
-            <div>
+            {/* Bonus */}
+            <div className={outstandingRecovery > 0 ? "col-span-1" : "col-span-2"}>
               <label className="text-sm font-medium text-foreground block mb-1.5">Bonus (₹)</label>
               <Input type="number" min={0} {...regGen("bonus", { valueAsNumber: true })} placeholder="0" />
             </div>
-            <div>
-              <label className="text-sm font-medium text-foreground block mb-1.5">Advance (₹)</label>
-              <Input type="number" min={0} {...regGen("advance", { valueAsNumber: true })} placeholder="0" className="bg-amber-500/5 focus-visible:ring-amber-500/30" />
-            </div>
+
+            {/* Outstanding Recovery Section (Only visible if outstanding dues > 0) */}
+            {outstandingRecovery > 0 && (
+              <div className="col-span-2 p-3.5 bg-indigo-500/5 rounded-2xl border border-glass-border space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Outstanding Recovery</span>
+                  <Badge variant="destructive" className="font-bold text-xs">
+                    {formatCurrency(outstandingRecovery)}
+                  </Badge>
+                </div>
+                
+                <div className="grid grid-cols-3 gap-2">
+                  <label className={`flex flex-col items-center justify-center p-2.5 rounded-xl border cursor-pointer text-center select-none transition-all ${watchedRecoveryOption === "full" ? "bg-indigo-500/10 border-indigo-500/50 shadow-md shadow-indigo-500/10" : "bg-card border-glass-border hover:bg-glass-bg"}`}>
+                    <input type="radio" value="full" {...regGen("recoveryOption")} className="sr-only" />
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${watchedRecoveryOption === "full" ? "text-indigo-400" : "text-muted-foreground"}`}>
+                      Deduct Full
+                    </span>
+                    <span className="text-[10px] text-muted-foreground mt-0.5 font-black">
+                      {formatCurrency(outstandingRecovery)}
+                    </span>
+                  </label>
+                  
+                  <label className={`flex flex-col items-center justify-center p-2.5 rounded-xl border cursor-pointer text-center select-none transition-all ${watchedRecoveryOption === "partial" ? "bg-indigo-500/10 border-indigo-500/50 shadow-md shadow-indigo-500/10" : "bg-card border-glass-border hover:bg-glass-bg"}`}>
+                    <input type="radio" value="partial" {...regGen("recoveryOption")} className="sr-only" />
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${watchedRecoveryOption === "partial" ? "text-indigo-400" : "text-muted-foreground"}`}>
+                      Partial
+                    </span>
+                    <span className="text-[10px] text-muted-foreground mt-0.5">
+                      Choose Amount
+                    </span>
+                  </label>
+
+                  <label className={`flex flex-col items-center justify-center p-2.5 rounded-xl border cursor-pointer text-center select-none transition-all ${watchedRecoveryOption === "skip" ? "bg-indigo-500/10 border-indigo-500/50 shadow-md shadow-indigo-500/10" : "bg-card border-glass-border hover:bg-glass-bg"}`}>
+                    <input type="radio" value="skip" {...regGen("recoveryOption")} className="sr-only" />
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${watchedRecoveryOption === "skip" ? "text-indigo-400" : "text-muted-foreground"}`}>
+                      Skip
+                    </span>
+                    <span className="text-[10px] text-muted-foreground mt-0.5">
+                      Deduct ₹0
+                    </span>
+                  </label>
+                </div>
+
+                {watchedRecoveryOption === "partial" && (
+                  <div className="pt-1.5 animate-fadeIn">
+                    <label className="text-xs font-semibold text-muted-foreground block mb-1">Deduction Amount (₹)</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={outstandingRecovery}
+                      {...regGen("recoveryAmount", { valueAsNumber: true })}
+                      placeholder="Enter recovery amount..."
+                      className="bg-card"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Extra deduction */}
             <div className="col-span-2">

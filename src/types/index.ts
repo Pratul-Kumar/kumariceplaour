@@ -112,6 +112,28 @@ export interface AdvanceRecord {
 }
 
 // ============================================================
+// EMPLOYEE LEDGER RECORD
+// ============================================================
+export interface EmployeeLedgerEntry {
+  id?: string;
+  staffId: string;
+  type:
+    | "salary_advance"
+    | "repayment"
+    | "manual_adjustment"
+    | "salary_deduction"
+    | "salary_adjustment";
+  amount: number;
+  direction: "employee_owes" | "store_owes";
+  status: "pending" | "partial" | "settled";
+  linkedSalaryId?: string;
+  linkedExpenseId?: string;
+  notes?: string;
+  createdBy: string;
+  createdAt: string; // ISO string matching existing records
+}
+
+// ============================================================
 // LEAVE RECORD
 // ============================================================
 export type LeaveType = "casual" | "paid" | "unpaid" | "sick";
