@@ -35,7 +35,7 @@ export function generateMonthlySalaryReport(month: string, records: SalaryRecord
       pdfCurrency(record.finalSalary),
       pdfCurrency(paid),
       pdfCurrency(remaining),
-      record.status.toUpperCase(),
+      (record.status || "pending").toUpperCase(),
     ];
   });
 

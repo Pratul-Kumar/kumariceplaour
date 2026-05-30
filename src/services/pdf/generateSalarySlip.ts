@@ -29,7 +29,7 @@ export async function generateSalarySlip(
   y = drawSectionTitle(doc, y, "Employee Information");
   y = drawInfoGrid(doc, y, [
     { label: "Employee Name",  value: staff.name },
-    { label: "Role / Position", value: staff.role.toUpperCase() },
+    { label: "Role / Position", value: (staff.role || "staff").toUpperCase() },
     { label: "Salary Type",    value: staff.salaryType === "monthly" ? "Monthly Fixed" : "Daily Wage" },
     { label: "Joining Date",   value: staff.joiningDate ? formatDate(staff.joiningDate) : "N/A" },
     { label: "Phone",          value: staff.phone },
@@ -85,7 +85,7 @@ export async function generateSalarySlip(
 
     const paymentBody = payments.map((p) => [
       formatDate(p.paymentDate),
-      p.paymentMethod.toUpperCase(),
+      (p.paymentMethod || "cash").toUpperCase(),
       pdfCurrency(p.amountPaid),
       p.note || "-",
     ]);

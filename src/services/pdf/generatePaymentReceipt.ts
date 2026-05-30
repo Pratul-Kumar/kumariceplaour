@@ -33,9 +33,9 @@ export function generatePaymentReceipt(staff: Staff, record: SalaryRecord, payme
   y = drawSectionTitle(doc, y, "Payment Details");
   y = drawInfoGrid(doc, y, [
     { label: "Received By",     value: `${staff.name}` },
-    { label: "Role",            value: staff.role.toUpperCase() },
+    { label: "Role",            value: (staff.role || "staff").toUpperCase() },
     { label: "Payment Date",    value: formatDate(payment.paymentDate) },
-    { label: "Payment Method",  value: payment.paymentMethod.toUpperCase() },
+    { label: "Payment Method",  value: (payment.paymentMethod || "cash").toUpperCase() },
     { label: "Salary Month",    value: formatMonth(monthStr) },
     { label: "Receipt No.",     value: receiptNo },
   ], 2);

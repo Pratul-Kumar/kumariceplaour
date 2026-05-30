@@ -30,12 +30,13 @@ export const COLORS = {
 };
 
 // ─── Currency Formatter (ASCII-safe for jsPDF built-in fonts) ────────────────
-export function pdfCurrency(amount: number): string {
-  const formatted = Math.abs(amount).toLocaleString("en-IN", {
+export function pdfCurrency(amount?: number | null): string {
+  const val = amount || 0;
+  const formatted = Math.abs(val).toLocaleString("en-IN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  return amount < 0 ? `Rs. -${formatted}` : `Rs. ${formatted}`;
+  return val < 0 ? `Rs. -${formatted}` : `Rs. ${formatted}`;
 }
 
 // ─── PDF Document Factory ────────────────────────────────────────────────────

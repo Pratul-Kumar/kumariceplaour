@@ -59,9 +59,9 @@ export function generateSalaryLedger(records: SalaryRecord[], payments: SalaryPa
   const body = ledgerEntries.map((e) => [
     formatDate(e.date),
     e.staffName,
-    e.role.toUpperCase(),
+    (e.role || "staff").toUpperCase(),
     formatMonth(e.month),
-    e.method.toUpperCase(),
+    (e.method || "cash").toUpperCase(),
     e.note,
     pdfCurrency(e.amount),
   ]);

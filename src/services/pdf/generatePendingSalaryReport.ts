@@ -48,7 +48,7 @@ export function generatePendingSalaryReport(records: SalaryRecord[], staffList: 
         pdfCurrency(totalPayable),
         pdfCurrency(r.totalPaid),
         pdfCurrency(r.remainingDue),
-        r.status.toUpperCase(),
+        (r.status || "pending").toUpperCase(),
       ];
     });
 
