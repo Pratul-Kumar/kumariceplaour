@@ -12,7 +12,6 @@ const StaffProfile = lazy(() => import("@/pages/StaffProfile").then(m => ({ defa
 const AttendanceManagement = lazy(() => import("@/pages/AttendanceManagement").then(m => ({ default: m.AttendanceManagement })));
 const ExpenseManagement = lazy(() => import("@/pages/ExpenseManagement").then(m => ({ default: m.ExpenseManagement })));
 const SalaryManagement = lazy(() => import("@/pages/SalaryManagement").then(m => ({ default: m.SalaryManagement })));
-const LeaveManagement = lazy(() => import("@/pages/LeaveManagement").then(m => ({ default: m.LeaveManagement })));
 const Analytics = lazy(() => import("@/pages/Analytics").then(m => ({ default: m.Analytics })));
 const Settings = lazy(() => import("@/pages/Settings").then(m => ({ default: m.Settings })));
 const HistoryReports = lazy(() => import("@/pages/HistoryReports").then(m => ({ default: m.HistoryReports })));
@@ -91,7 +90,6 @@ export function App() {
                       <Route path="/attendance" element={<AttendanceManagement />} />
                       <Route path="/expenses" element={<ExpenseManagement />} />
                       <Route path="/salary" element={<SalaryManagement />} />
-                      <Route path="/leaves" element={<LeaveManagement />} />
                       <Route path="/analytics" element={<Analytics />} />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/history" element={<HistoryReports />} />

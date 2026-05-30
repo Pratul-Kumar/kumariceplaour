@@ -13,12 +13,11 @@ const STATUS_CONFIG: Record<AttendanceStatus, { label: string; short: string; bg
   present:  { label: "Present",  short: "P", bg: "bg-emerald-500/20", text: "text-emerald-700 dark:text-emerald-400", ring: "ring-emerald-500", icon: CheckCircle },
   absent:   { label: "Absent",   short: "A", bg: "bg-red-500/20",     text: "text-red-700 dark:text-red-400",         ring: "ring-red-500",     icon: XCircle },
   half_day: { label: "Half Day", short: "H", bg: "bg-amber-500/20",   text: "text-amber-700 dark:text-amber-400",     ring: "ring-amber-500",   icon: Clock },
-  leave:    { label: "Leave",    short: "L", bg: "bg-blue-500/20",    text: "text-blue-700 dark:text-blue-400",       ring: "ring-blue-500",    icon: CalendarOff },
 };
 
 const NEXT_STATUS: Record<string, AttendanceStatus | "clear"> = {
   "undefined": "present", "present": "absent",
-  "absent": "half_day", "half_day": "leave", "leave": "clear",
+  "absent": "half_day", "half_day": "clear",
 };
 
 const STATUS_ENTRIES = Object.entries(STATUS_CONFIG) as [AttendanceStatus, typeof STATUS_CONFIG[AttendanceStatus]][];
@@ -59,7 +58,7 @@ const DailyStaffCard = memo(function DailyStaffCard({
         </div>
 
         {/* Status buttons — large touch targets (min 48px tall) */}
-        <div className="grid grid-cols-5 gap-2">
+        <div className="grid grid-cols-4 gap-2">
           {STATUS_ENTRIES.map(([key, c]) => {
             const isActive = status === key;
             return (
@@ -478,19 +477,17 @@ export function AttendanceManagement() {
                         <th className="px-3 py-3 font-bold text-xs uppercase tracking-widest text-center text-emerald-500 border-l border-glass-border bg-emerald-500/10 min-w-[36px]">P</th>
                         <th className="px-3 py-3 font-bold text-xs uppercase tracking-widest text-center text-red-500 bg-red-500/10 min-w-[36px]">A</th>
                         <th className="px-3 py-3 font-bold text-xs uppercase tracking-widest text-center text-amber-500 bg-amber-500/10 min-w-[36px]">H</th>
-                        <th className="px-3 py-3 font-bold text-xs uppercase tracking-widest text-center text-blue-500 bg-blue-500/10 min-w-[36px]">L</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {staff.map(s => {
                         const staffAtt = attendanceMap[s.id!] || {};
-                        let p = 0, a = 0, h = 0, l = 0;
+                        let p = 0, a = 0, h = 0;
                         days.forEach(date => {
                           const st = staffAtt[date];
                           if (st === "present") p++;
                           else if (st === "absent") a++;
                           else if (st === "half_day") h++;
-                          else if (st === "leave") l++;
                         });
                         return (
                           <tr key={s.id} className="hover:bg-glass-bg transition-colors group">
@@ -522,7 +519,6 @@ export function AttendanceManagement() {
                             <td className="px-3 py-2 text-center font-bold text-emerald-400 border-l border-glass-border bg-emerald-500/5">{p}</td>
                             <td className="px-3 py-2 text-center font-bold text-red-400 bg-red-500/5">{a}</td>
                             <td className="px-3 py-2 text-center font-bold text-amber-400 bg-amber-500/5">{h}</td>
-                            <td className="px-3 py-2 text-center font-bold text-blue-400 bg-blue-500/5">{l}</td>
                           </tr>
                         );
                       })}

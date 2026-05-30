@@ -1,11 +1,11 @@
 import { useEffect, useState, memo, useMemo, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  TrendingDown, Users, CalendarOff, Clock, ArrowUpRight,
+  TrendingDown, Users, Clock, ArrowUpRight,
   IndianRupee, Receipt, Zap, AlertCircle
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, Skeleton, Badge, EmptyState } from "@/components/ui";
-import { expenseService, staffService, salaryService, leaveService, advanceService } from "@/services";
+import { expenseService, staffService, salaryService, advanceService } from "@/services";
 import { formatCurrency, formatDate, getCurrentMonth, getLast12Months, formatMonth } from "@/lib/utils";
 import { EXPENSE_CATEGORIES, type Expense } from "@/types";
 
@@ -20,7 +20,6 @@ interface DashboardStats {
   pendingSalary: number;
   pendingAdvances: number;
   staffCount: number;
-  todayLeaves: number;
   recentExpenses: Expense[];
   categoryTotals: Record<string, number>;
   monthlyTrend: { month: string; amount: number }[];
@@ -71,7 +70,6 @@ export function Dashboard() {
     pendingSalary: 0,
     pendingAdvances: 0,
     staffCount: 0,
-    todayLeaves: 0,
     recentExpenses: [],
     categoryTotals: {},
     monthlyTrend: []
@@ -119,10 +117,7 @@ export function Dashboard() {
       setStats(prev => ({ ...prev, pendingAdvances: pendingTotal }));
     });
 
-    // Today's leave count — live listener so it updates cross-device
-    const unsubLeaves = leaveService.subscribeByDate(today, (leaves) => {
-      setStats(prev => ({ ...prev, todayLeaves: leaves.length }));
-    });
+
 
     // Monthly trend — updated whenever current month snapshot fires
     // For past 6 months: use getDocs (historical, stable data)
@@ -147,7 +142,6 @@ export function Dashboard() {
       unsubStaff();
       unsubSalary();
       unsubAdvances();
-      unsubLeaves();
     };
   }, []);
 
@@ -183,13 +177,12 @@ export function Dashboard() {
       </div>
 
       {/* Stat Cards — render immediately, no chart dependency */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <StatCard icon={TrendingDown} label="Today's Spend" value={formatCurrency(stats.todayExpenses)} sub="Today" color="bg-red-500" loading={loading} onClick={() => navigate('/expenses')} />
         <StatCard icon={Receipt} label="This Month" value={formatCurrency(stats.monthExpenses)} sub={formatMonth(getCurrentMonth())} color="bg-violet-500" loading={loading} onClick={() => navigate('/expenses')} />
         <StatCard icon={IndianRupee} label="Salary Due" value={formatCurrency(stats.pendingSalary)} sub="Unpaid" color="bg-amber-500" loading={loading} onClick={() => navigate('/salary')} />
         <StatCard icon={Zap} label="Advances" value={formatCurrency(stats.pendingAdvances)} sub="Pending" color="bg-rose-500" loading={loading} />
         <StatCard icon={Users} label="Staff" value={String(stats.staffCount)} sub="Total active" color="bg-emerald-500" loading={loading} onClick={() => navigate('/staff')} />
-        <StatCard icon={CalendarOff} label="On Leave" value={String(stats.todayLeaves)} sub="Today" color="bg-pink-500" loading={loading} onClick={() => navigate('/leaves')} />
       </div>
 
       {/* Charts + Activity — lazy loaded after stat cards paint */}

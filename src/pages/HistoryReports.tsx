@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { Download, Search, Filter } from "lucide-react";
 import { Card, CardContent, Input, Button, Badge, EmptyState } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
-import { staffService, salaryService, advanceService, leaveService, attendanceService } from "@/services";
-import { Staff, SalaryRecord, AdvanceRecord, Attendance, LeaveRecord } from "@/types";
+import { staffService, salaryService, advanceService, attendanceService } from "@/services";
+import { Staff, SalaryRecord, AdvanceRecord, Attendance } from "@/types";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 type TabType = "attendance" | "salary" | "advances" | "pending";

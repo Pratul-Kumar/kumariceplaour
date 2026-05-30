@@ -14,7 +14,6 @@ interface Props {
     recentExpenses: Expense[];
     categoryTotals: Record<string, number>;
     pendingSalary: number;
-    todayLeaves: number;
   };
   loading: boolean;
   pieData: { name: string; value: number; color: string }[];

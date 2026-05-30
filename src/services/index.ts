@@ -3,7 +3,7 @@ import {
   query, where, orderBy, onSnapshot, limit, runTransaction, getDoc
 } from "firebase/firestore";
 import { db } from "@/firebase/config";
-import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, LeaveRecord, AdvanceRecord, AppSettings } from "@/types";
+import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, AdvanceRecord, AppSettings } from "@/types";
 
 const mapDoc = <T>(d: any): T => ({ id: d.id, ...d.data() } as T);
 
@@ -26,7 +26,6 @@ class TTLCache<T> {
 
 const expenseMonthCache = new TTLCache<number>();
 const expenseCatCache   = new TTLCache<Record<string, number>>();
-const leaveCache        = new TTLCache<LeaveRecord[]>();
 
 const CURRENT_MONTH = new Date().toISOString().slice(0, 7);
 const isHistorical  = (month: string) => month < CURRENT_MONTH;
@@ -516,65 +515,7 @@ export const salaryService = {
   },
 };
 
-// ─── LEAVE SERVICE ────────────────────────────────────────────────────────────
-const leavesCol = collection(db, "leaveRecords");
 
-export const leaveService = {
-  subscribeByMonth: (month: string, cb: (d: LeaveRecord[]) => void) => {
-    // range on same field (leaveDate) — no composite index needed
-    const q = query(leavesCol, where("leaveDate", ">=", `${month}-01`), where("leaveDate", "<=", `${month}-31`));
-    return onSnapshot(q,
-      s => {
-        const data = s.docs.map(mapDoc<LeaveRecord>);
-        data.sort((a, b) => a.leaveDate.localeCompare(b.leaveDate));
-        leaveCache.set(month, data);
-        cb(data);
-      },
-      err => console.error("[leaveService.subscribeByMonth]", err.message)
-    );
-  },
-
-  /** Live listener for all leaves on a specific date — used by Dashboard */
-  subscribeByDate: (date: string, cb: (d: LeaveRecord[]) => void) => {
-    const q = query(leavesCol, where("leaveDate", "==", date));
-    return onSnapshot(q, s => cb(s.docs.map(mapDoc<LeaveRecord>)));
-  },
-
-  getTodayCount: async () => {
-    const today = new Date().toISOString().split("T")[0];
-    const snap = await getDocs(query(leavesCol, where("leaveDate", "==", today)));
-    return snap.size;
-  },
-
-  getByStaff: async (staffId: string) => {
-    const snap = await getDocs(query(leavesCol, where("staffId", "==", staffId)));
-    const data = snap.docs.map(mapDoc<LeaveRecord>);
-    data.sort((a, b) => b.leaveDate.localeCompare(a.leaveDate));
-    return data;
-  },
-
-  getByMonth: async (month: string) => {
-    const cached = leaveCache.get(month);
-    if (cached !== undefined) return cached;
-    const q = query(leavesCol, where("leaveDate", ">=", `${month}-01`), where("leaveDate", "<=", `${month}-31`));
-    const snap = await getDocs(q);
-    const data = snap.docs.map(mapDoc<LeaveRecord>);
-    data.sort((a, b) => a.leaveDate.localeCompare(b.leaveDate));
-    leaveCache.set(month, data);
-    return data;
-  },
-
-  add: async (data: Omit<LeaveRecord, "id" | "createdAt" | "updatedAt">) => {
-    const now = new Date().toISOString();
-    leaveCache.del(data.leaveDate.slice(0, 7));
-    return addDoc(leavesCol, { ...data, createdAt: now, updatedAt: now });
-  },
-
-  delete: async (id: string) => {
-    leaveCache.clear();
-    return deleteDoc(doc(db, "leaveRecords", id));
-  },
-};
 
 // ─── STUBS ────────────────────────────────────────────────────────────────────
 export const tempStaffService = {

@@ -20,7 +20,6 @@ const staffSchema = z.object({
   monthlySalary: z.preprocess((v) => Number(v) || 0, z.number().min(0)).default(0),
   dailyWage: z.preprocess((v) => Number(v) || 0, z.number().min(0)).default(0),
   joiningDate: z.string().optional(),
-  allowedCasualLeavesPerMonth: z.preprocess((v) => Number(v) || 2, z.number().min(0).max(31)).default(2),
   note: z.string().optional(),
   address: z.string().optional(),
 });
@@ -43,7 +42,7 @@ export function StaffManagement() {
 
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<StaffFormData>({
     resolver: zodResolver(staffSchema),
-    defaultValues: { salaryType: "monthly", monthlySalary: 0, dailyWage: 0, allowedCasualLeavesPerMonth: 2 },
+    defaultValues: { salaryType: "monthly", monthlySalary: 0, dailyWage: 0 },
   });
 
   const salaryType = watch("salaryType");
@@ -71,7 +70,7 @@ export function StaffManagement() {
 
   const openAdd = () => {
     setEditItem(null);
-    reset({ salaryType: "monthly", monthlySalary: 0, dailyWage: 0, allowedCasualLeavesPerMonth: 2, joiningDate: new Date().toISOString().split("T")[0] });
+    reset({ salaryType: "monthly", monthlySalary: 0, dailyWage: 0, joiningDate: new Date().toISOString().split("T")[0] });
     setModalOpen(true);
   };
 
@@ -80,7 +79,7 @@ export function StaffManagement() {
     reset({
       name: s.name, role: s.role, phone: s.phone,
       salaryType: s.salaryType, monthlySalary: s.monthlySalary, dailyWage: s.dailyWage,
-      joiningDate: s.joiningDate, allowedCasualLeavesPerMonth: s.allowedCasualLeavesPerMonth,
+      joiningDate: s.joiningDate,
       note: s.note || "", address: s.address || "",
     });
     setModalOpen(true);
@@ -106,7 +105,6 @@ export function StaffManagement() {
         monthlySalary: data.monthlySalary,
         dailyWage: data.dailyWage,
         joiningDate: data.joiningDate || new Date().toISOString().split("T")[0],
-        allowedCasualLeavesPerMonth: data.allowedCasualLeavesPerMonth,
         note: data.note || "",
         address: data.address || "",
       };
@@ -216,12 +214,7 @@ export function StaffManagement() {
                     <span className="text-muted-foreground">Since</span>
                     <span className="text-foreground">{formatDate(s.joiningDate)}</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Leaves</span>
-                    <span className={`font-medium ${s.leaveCount > s.allowedCasualLeavesPerMonth ? "text-red-400" : "text-foreground"}`}>
-                      {s.leaveCount} / {s.allowedCasualLeavesPerMonth} allowed
-                    </span>
-                  </div>
+
                 </div>
 
                 <div className="flex gap-2">
@@ -302,13 +295,9 @@ export function StaffManagement() {
               </div>
             )}
 
-            <div>
+            <div className="col-span-2">
               <label className="text-sm font-medium text-foreground block mb-1.5">Joining Date *</label>
               <Input type="date" {...register("joiningDate")} />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground block mb-1.5">Casual Leaves/Month</label>
-              <Input type="number" min={0} max={31} {...register("allowedCasualLeavesPerMonth", { valueAsNumber: true })} placeholder="2" />
             </div>
             <div className="col-span-2">
               <label className="text-sm font-medium text-foreground block mb-1.5">Note</label>

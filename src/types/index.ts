@@ -14,8 +14,6 @@ export interface Staff {
   monthlySalary: number;
   dailyWage: number;
   joiningDate?: string;
-  allowedCasualLeavesPerMonth: number;
-  leaveCount: number;
   status: StaffStatus;
   address?: string;
   note?: string;
@@ -26,7 +24,7 @@ export interface Staff {
 // ============================================================
 // ATTENDANCE
 // ============================================================
-export type AttendanceStatus = "present" | "absent" | "half_day" | "leave";
+export type AttendanceStatus = "present" | "absent" | "half_day";
 
 export interface Attendance {
   id?: string;
@@ -112,21 +110,7 @@ export interface AdvanceRecord {
   updatedAt: string;
 }
 
-// ============================================================
-// LEAVE RECORD
-// ============================================================
-export type LeaveType = "casual" | "paid" | "unpaid" | "sick";
 
-export interface LeaveRecord {
-  id?: string;
-  staffId: string;
-  leaveDate: string;
-  leaveType: LeaveType;
-  reason?: string;
-  approved: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
 
 // ============================================================
 // TEMPORARY WORKER
@@ -177,18 +161,12 @@ export const STAFF_ROLES: { value: string; label: string }[] = [
   { value: "cleaner",  label: "Cleaner" },
 ];
 
-export const LEAVE_TYPES: { value: LeaveType; label: string }[] = [
-  { value: "casual",  label: "Casual Leave" },
-  { value: "paid",    label: "Paid Leave" },
-  { value: "unpaid",  label: "Unpaid Leave" },
-  { value: "sick",    label: "Sick Leave" },
-];
+
 
 export const ATTENDANCE_STATUSES: { value: AttendanceStatus; label: string; color: string }[] = [
   { value: "present",  label: "Present",  color: "emerald" },
   { value: "absent",   label: "Absent",   color: "red" },
   { value: "half_day", label: "Half Day", color: "amber" },
-  { value: "leave",    label: "Leave",    color: "blue" },
 ];
 
 export function getCategoryInfo(category: ExpenseCategory) {
@@ -227,42 +205,47 @@ export function calculateSalary(input: SalaryCalculationInput): SalaryCalculatio
   const breakdown: string[] = [];
 
   // Count attendance
-  let presentDays = 0, absentDays = 0, leaveDays = 0, halfDays = 0, totalOvertimeHours = 0;
+  let presentDays = 0, absentDays = 0, halfDays = 0, totalOvertimeHours = 0;
   for (const rec of attendanceRecords) {
     if (rec.status === "present")  { presentDays += 1; }
     else if (rec.status === "half_day") { presentDays += 0.5; halfDays += 1; }
     else if (rec.status === "absent")  { absentDays += 1; }
-    else if (rec.status === "leave")   { leaveDays += 1; }
     totalOvertimeHours += rec.overtimeHours || 0;
   }
 
-  let leaveDeductionAmount = 0;
-  let deductedLeaves = 0;
   let finalSalary = 0;
 
   if (staff.salaryType === "monthly") {
     const perDaySalary = staff.monthlySalary / workingDaysInMonth;
-    const allowedLeaves = staff.allowedCasualLeavesPerMonth;
-    deductedLeaves = Math.max(0, leaveDays - allowedLeaves);
-    leaveDeductionAmount = deductedLeaves * perDaySalary;
     const absentDeduction = absentDays * perDaySalary;
     const halfDayDeduction = halfDays * (perDaySalary / 2);
     const overtimeRate = input.overtimeRatePerHour ?? perDaySalary / 8;
     const overtimeAmount = totalOvertimeHours * overtimeRate;
 
-    finalSalary = staff.monthlySalary - leaveDeductionAmount - absentDeduction - halfDayDeduction + overtimeAmount + bonus - advance - extraDeduction;
+    finalSalary = staff.monthlySalary - absentDeduction - halfDayDeduction + overtimeAmount + bonus - advance - extraDeduction;
     const remainingDue = finalSalary;
 
     breakdown.push(`Base: ₹${staff.monthlySalary.toLocaleString()}`);
     if (absentDeduction > 0) breakdown.push(`Absent (${absentDays}d): -₹${absentDeduction.toFixed(0)}`);
     if (halfDayDeduction > 0) breakdown.push(`Half Days (${halfDays}): -₹${halfDayDeduction.toFixed(0)}`);
-    if (leaveDeductionAmount > 0) breakdown.push(`Extra Leaves (${deductedLeaves}): -₹${leaveDeductionAmount.toFixed(0)}`);
     if (overtimeAmount > 0) breakdown.push(`Overtime (${totalOvertimeHours}h): +₹${overtimeAmount.toFixed(0)}`);
     if (bonus > 0) breakdown.push(`Bonus: +₹${bonus}`);
     if (advance > 0) breakdown.push(`Advance: -₹${advance}`);
     if (extraDeduction > 0) breakdown.push(`Extra Deduction: -₹${extraDeduction}`);
 
-    return { presentDays, absentDays, leaveDays, halfDays, totalOvertimeHours, deductedLeaves, leaveDeductionAmount, overtimeAmount: totalOvertimeHours * overtimeRate, finalSalary, remainingDue, breakdown };
+    return { 
+      presentDays, 
+      absentDays, 
+      leaveDays: 0, 
+      halfDays, 
+      totalOvertimeHours, 
+      deductedLeaves: 0, 
+      leaveDeductionAmount: 0, 
+      overtimeAmount: totalOvertimeHours * overtimeRate, 
+      finalSalary, 
+      remainingDue, 
+      breakdown 
+    };
   } else {
     // Daily wage
     const perDaySalary = staff.dailyWage;
@@ -277,6 +260,18 @@ export function calculateSalary(input: SalaryCalculationInput): SalaryCalculatio
     if (advance > 0) breakdown.push(`Advance: -₹${advance}`);
     if (extraDeduction > 0) breakdown.push(`Extra Deduction: -₹${extraDeduction}`);
 
-    return { presentDays, absentDays, leaveDays, halfDays, totalOvertimeHours, deductedLeaves: 0, leaveDeductionAmount: 0, overtimeAmount, finalSalary, remainingDue, breakdown };
+    return { 
+      presentDays, 
+      absentDays, 
+      leaveDays: 0, 
+      halfDays, 
+      totalOvertimeHours, 
+      deductedLeaves: 0, 
+      leaveDeductionAmount: 0, 
+      overtimeAmount, 
+      finalSalary, 
+      remainingDue, 
+      breakdown 
+    };
   }
 }

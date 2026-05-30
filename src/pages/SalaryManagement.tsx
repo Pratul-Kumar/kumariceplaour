@@ -539,15 +539,14 @@ export function SalaryManagement() {
       const payments  = await salaryService.getPaymentsForRecord(record.id!);
       const monthStr  = `${record.year}-${String(record.month).padStart(2, "0")}`;
       const attRecords = await attendanceService.getByStaffAndMonth(staff.id!, monthStr);
-      let w = new Date(record.year, record.month, 0).getDate(), p = 0, a = 0, l = 0, h = 0;
+      let w = new Date(record.year, record.month, 0).getDate(), p = 0, a = 0, h = 0;
       attRecords.forEach(att => {
         if (att.status === "present") p++;
         else if (att.status === "absent") a++;
-        else if (att.status === "leave") l++;
         else if (att.status === "half_day") h++;
       });
       const { generateSalarySlip } = await import("@/services/pdf/generateSalarySlip");
-      generateSalarySlip(staff, record, payments, { workingDays: w, presentDays: p, absentDays: a, leaveDays: l, halfDays: h });
+      generateSalarySlip(staff, record, payments, { workingDays: w, presentDays: p, absentDays: a, leaveDays: 0, halfDays: h });
     } catch {
       toast({ type: "error", title: "Could not generate slip", description: "Try again." });
     }

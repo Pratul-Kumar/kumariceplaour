@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Phone, Calendar, IndianRupee, Award } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, Badge, Skeleton, Button } from "@/components/ui";
-import { staffService, salaryService, leaveService, attendanceService, advanceService } from "@/services";
-import { type Staff, type SalaryRecord, type LeaveRecord, type Attendance, type AdvanceRecord } from "@/types";
+import { staffService, salaryService, attendanceService, advanceService } from "@/services";
+import { type Staff, type SalaryRecord, type Attendance, type AdvanceRecord } from "@/types";
 import { formatCurrency, formatDate, formatMonth, getInitials, generateAvatarColor } from "@/lib/utils";
 
 export function StaffProfile() {
@@ -11,11 +11,10 @@ export function StaffProfile() {
   const navigate = useNavigate();
   const [staff, setStaff] = useState<Staff | null>(null);
   const [salaryHistory, setSalaryHistory] = useState<SalaryRecord[]>([]);
-  const [leaveHistory, setLeaveHistory] = useState<LeaveRecord[]>([]);
   const [advanceHistory, setAdvanceHistory] = useState<AdvanceRecord[]>([]);
   const [currentMonthAtt, setCurrentMonthAtt] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"salary" | "leave" | "attendance" | "advance">("salary");
+  const [tab, setTab] = useState<"salary" | "attendance" | "advance">("salary");
 
   useEffect(() => {
     if (!id) return;
@@ -39,12 +38,8 @@ export function StaffProfile() {
       }
     });
 
-    // One-time server fetches for history (salary + leave) — forced from server for freshness
     salaryService.getByStaff(staffId).then((sal) => {
       if (active) setSalaryHistory(sal);
-    });
-    leaveService.getByStaff(staffId).then((lv) => {
-      if (active) setLeaveHistory(lv);
     });
     advanceService.getByStaff(staffId).then((adv) => {
       if (active) setAdvanceHistory(adv);
@@ -108,18 +103,13 @@ export function StaffProfile() {
               {staff.note && <p className="text-xs text-muted-foreground mt-2 italic">"{staff.note}"</p>}
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
             <div className="bg-muted/50 rounded-xl p-3 text-center">
               <p className="text-xs text-muted-foreground">Salary</p>
               <p className="text-sm font-bold text-foreground mt-1">
                 {staff.salaryType === "monthly" ? formatCurrency(staff.monthlySalary) : formatCurrency(staff.dailyWage)}
               </p>
               <p className="text-xs text-muted-foreground">{staff.salaryType === "monthly" ? "/month" : "/day"}</p>
-            </div>
-            <div className="bg-muted/50 rounded-xl p-3 text-center">
-              <p className="text-xs text-muted-foreground">Leaves Taken</p>
-              <p className={`text-sm font-bold mt-1 ${staff.leaveCount > staff.allowedCasualLeavesPerMonth ? "text-red-400" : "text-foreground"}`}>{staff.leaveCount}</p>
-              <p className="text-xs text-muted-foreground">{staff.allowedCasualLeavesPerMonth} allowed</p>
             </div>
             <div className="bg-emerald-500/10 rounded-xl p-3 text-center">
               <p className="text-xs text-muted-foreground">Present</p>
@@ -151,9 +141,9 @@ export function StaffProfile() {
 
       {/* Tabs */}
       <div className="flex flex-wrap rounded-xl bg-muted p-1 gap-1">
-        {(["salary", "leave", "attendance", "advance"] as const).map((t) => (
+        {(["salary", "attendance", "advance"] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`flex-1 min-w-[100px] py-2 text-sm font-medium rounded-lg capitalize transition-all ${tab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
-            {t === "salary" ? "💰 Salary" : t === "leave" ? "🏖️ Leave" : t === "attendance" ? "📋 Attendance" : "💸 Advances"}
+            {t === "salary" ? "💰 Salary" : t === "attendance" ? "📋 Attendance" : "💸 Advances"}
           </button>
         ))}
       </div>
@@ -188,30 +178,6 @@ export function StaffProfile() {
         </Card>
       )}
 
-      {/* Leave History */}
-      {tab === "leave" && (
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Leave History</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            {leaveHistory.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8 text-sm">No leave records yet</p>
-            ) : (
-              <div className="divide-y divide-border">
-                {leaveHistory.map((l) => (
-                  <div key={l.id} className="flex items-center justify-between px-5 py-4">
-                    <div>
-                      <p className="text-sm font-medium text-foreground capitalize">{l.leaveType.replace("_", " ")} Leave</p>
-                      <p className="text-xs text-muted-foreground">{formatDate(l.leaveDate)}</p>
-                      {l.reason && <p className="text-xs text-muted-foreground/70 italic">{l.reason}</p>}
-                    </div>
-                    <Badge variant={l.approved ? "success" : "warning"}>{l.approved ? "Approved" : "Pending"}</Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       {/* Attendance Summary */}
       {tab === "attendance" && (
