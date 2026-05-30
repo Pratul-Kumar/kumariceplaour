@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
 import { auth } from "@/firebase/config";
 import { signOut } from "firebase/auth";
+import { PoweredByFooter } from "@/components/PoweredByFooter";
 
 const NAV_ITEMS = [
   { to: "/",          icon: LayoutDashboard, label: "Dashboard",  color: "from-violet-500 to-indigo-500" },
@@ -270,10 +271,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* ── Page Content ──────────────────────────────────── */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="p-4 sm:p-5 pb-24 lg:pb-6 animate-fade-in max-w-7xl mx-auto w-full">
+        <main className="flex-1 overflow-y-auto flex flex-col justify-between">
+          <div className="p-4 sm:p-5 pb-24 lg:pb-6 animate-fade-in max-w-7xl mx-auto w-full flex-grow">
             {children}
           </div>
+          <PoweredByFooter className="pb-28 lg:pb-6" />
         </main>
       </div>
 

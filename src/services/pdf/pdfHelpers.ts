@@ -122,20 +122,35 @@ export function drawFooter(doc: jsPDF) {
     // Thin top border line
     doc.setDrawColor(...COLORS.border);
     doc.setLineWidth(0.3);
-    doc.line(10, H - 14, W - 10, H - 14);
+    doc.line(10, H - 16, W - 10, H - 16);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     doc.setTextColor(...COLORS.muted);
 
-    doc.text(SHOP_DETAILS.name, 12, H - 8);
+    doc.text(SHOP_DETAILS.name, 12, H - 11);
     doc.text(
       `Page ${i} of ${pageCount}  |  ${formatDate(new Date().toISOString(), "dd MMM yyyy, hh:mm a")}`,
       W / 2,
-      H - 8,
+      H - 11,
       { align: "center" }
     );
-    doc.text("Confidential", W - 12, H - 8, { align: "right" });
+    doc.text("Confidential", W - 12, H - 11, { align: "right" });
+
+    // Center branding footer watermark
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.5);
+    doc.setTextColor(156, 163, 175); // subtle gray color (gray-400)
+
+    const brandText1 = "Powered by Zintrix Digital Technologies Pvt Ltd";
+    const brandText2 = "https://zintrixtechnologies.com";
+    const url = "https://zintrixtechnologies.com";
+
+    const w1 = doc.getTextWidth(brandText1);
+    doc.textWithLink(brandText1, (W - w1) / 2, H - 7, { url });
+
+    const w2 = doc.getTextWidth(brandText2);
+    doc.textWithLink(brandText2, (W - w2) / 2, H - 3.5, { url });
   }
 }
 
