@@ -53,7 +53,7 @@ export async function generateSalarySlip(
   const tableHead = [["Earnings", "Amount (Rs.)", "Deductions", "Amount (Rs.)"]];
   const tableBody = [
     [baseSalaryLabel, pdfCurrency(record.baseSalary), "Leave Deduction",  pdfCurrency(record.leaveDeduction)],
-    ["Bonus",          pdfCurrency(record.bonus),      "Salary Advance",   pdfCurrency(record.advance)],
+    ["Bonus",          pdfCurrency(record.bonus),      "Advance (Recovery)", pdfCurrency(record.recoveredAmount ?? record.advance)],
     ["Overtime Pay",   pdfCurrency(record.overtime),   "Extra Deduction",  pdfCurrency(record.extraDeduction)],
   ];
 
@@ -78,6 +78,16 @@ export async function generateSalarySlip(
     { label: "Total Paid",       value: pdfCurrency(record.totalPaid),   color: COLORS.accent },
     { label: "Balance Due",      value: pdfCurrency(remaining),          color: remaining > 0 ? COLORS.danger : COLORS.accent },
   ]);
+
+  // ── Advance Balance Ledger ───────────────────────────────────────────────
+  if (record.outstandingBefore !== undefined || record.outstandingAfter !== undefined) {
+    y = drawSectionTitle(doc, y, "Advance Balance Ledger");
+    y = drawStatCards(doc, y, [
+      { label: "Outstanding Dues (Before)", value: pdfCurrency(record.outstandingBefore || 0), color: COLORS.warning },
+      { label: "Recovered This Month",       value: pdfCurrency(record.recoveredAmount ?? record.advance ?? 0), color: COLORS.danger },
+      { label: "Remaining Outstanding",      value: pdfCurrency(record.outstandingAfter || 0), color: COLORS.primary },
+    ]);
+  }
 
   // ── Payment History ──────────────────────────────────────────────────────
   if (payments && payments.length > 0) {

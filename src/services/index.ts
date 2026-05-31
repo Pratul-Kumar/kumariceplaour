@@ -3,7 +3,7 @@ import {
   query, where, orderBy, onSnapshot, limit, runTransaction, getDoc
 } from "firebase/firestore";
 import { db } from "@/firebase/config";
-import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, AdvanceRecord, AppSettings } from "@/types";
+import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, AdvanceRecord, AppSettings, LedgerEntry, LedgerType } from "@/types";
 
 const mapDoc = <T>(d: any): T => ({ id: d.id, ...d.data() } as T);
 
@@ -72,7 +72,7 @@ export const staffService = {
 
   add: async (data: Omit<Staff, "id" | "createdAt" | "updatedAt">) => {
     const now = new Date().toISOString();
-    return addDoc(staffCol, { ...data, createdAt: now, updatedAt: now });
+    return addDoc(staffCol, { ...data, outstandingBalance: 0, createdAt: now, updatedAt: now });
   },
   update: async (id: string, data: Partial<Staff>) =>
     updateDoc(doc(db, "staff", id), { ...data, updatedAt: new Date().toISOString() }),
@@ -202,6 +202,11 @@ export const expenseService = {
       return runTransaction(db, async (tx) => {
         const expenseRef = doc(expensesCol);
         const advanceRef = doc(collection(db, "advanceRecords"));
+        const staffRef = doc(db, "staff", data.staffId!);
+        
+        const staffSnap = await tx.get(staffRef);
+        const currentBal = staffSnap.exists() ? ((staffSnap.data() as Staff).outstandingBalance || 0) : 0;
+        
         tx.set(expenseRef, { ...data, createdAt: now, updatedAt: now });
         tx.set(advanceRef, {
           staffId: data.staffId,
@@ -214,6 +219,27 @@ export const expenseService = {
           createdAt: now,
           updatedAt: now
         });
+        
+        // Ledger Entry
+        const ledgerRef = doc(collection(db, "employee_ledger"));
+        tx.set(ledgerRef, {
+          staffId: data.staffId,
+          type: "salary_advance",
+          amount: data.amount,
+          date: data.date,
+          month: data.date.slice(0, 7),
+          note: data.note || "Salary Advance",
+          expenseId: expenseRef.id,
+          createdAt: now,
+          updatedAt: now
+        });
+
+        // Update Staff Balance
+        tx.update(staffRef, {
+          outstandingBalance: currentBal + data.amount,
+          updatedAt: now
+        });
+
         return expenseRef;
       });
     }
@@ -225,11 +251,40 @@ export const expenseService = {
     if (data.date) { expenseMonthCache.del(data.date.slice(0, 7)); expenseCatCache.del(data.date.slice(0, 7)); }
     const now = new Date().toISOString();
     
-    if (data.category === "salary_advance" || data.amount !== undefined) {
-      const q = query(collection(db, "advanceRecords"), where("expenseId", "==", id));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const advDoc = snap.docs[0];
+    const advQ = query(collection(db, "advanceRecords"), where("expenseId", "==", id));
+    const ledgerQ = query(collection(db, "employee_ledger"), where("expenseId", "==", id));
+    const [advSnap, ledgerSnap] = await Promise.all([getDocs(advQ), getDocs(ledgerQ)]);
+
+    if (!advSnap.empty) {
+      const advDoc = advSnap.docs[0];
+      const oldAdv = advDoc.data() as AdvanceRecord;
+      const oldAmount = oldAdv.amount;
+      const oldStaffId = oldAdv.staffId;
+
+      const newAmount = data.amount !== undefined ? data.amount : oldAmount;
+      const newStaffId = data.staffId !== undefined ? data.staffId : oldStaffId;
+
+      await runTransaction(db, async (tx) => {
+        if (oldStaffId !== newStaffId) {
+          const oldStaffRef = doc(db, "staff", oldStaffId);
+          const newStaffRef = doc(db, "staff", newStaffId);
+          
+          const oldStaffSnap = await tx.get(oldStaffRef);
+          const newStaffSnap = await tx.get(newStaffRef);
+          
+          const oldBal = oldStaffSnap.exists() ? ((oldStaffSnap.data() as Staff).outstandingBalance || 0) : 0;
+          const newBal = newStaffSnap.exists() ? ((newStaffSnap.data() as Staff).outstandingBalance || 0) : 0;
+          
+          tx.update(oldStaffRef, { outstandingBalance: Math.max(0, oldBal - oldAmount), updatedAt: now });
+          tx.update(newStaffRef, { outstandingBalance: newBal + newAmount, updatedAt: now });
+        } else if (oldAmount !== newAmount) {
+          const staffRef = doc(db, "staff", oldStaffId);
+          const staffSnap = await tx.get(staffRef);
+          const currentBal = staffSnap.exists() ? ((staffSnap.data() as Staff).outstandingBalance || 0) : 0;
+          tx.update(staffRef, { outstandingBalance: Math.max(0, currentBal - oldAmount + newAmount), updatedAt: now });
+        }
+
+        // Update the advanceRecord
         const updates: any = { updatedAt: now };
         if (data.amount !== undefined) updates.amount = data.amount;
         if (data.staffId !== undefined) updates.staffId = data.staffId;
@@ -238,8 +293,22 @@ export const expenseService = {
            updates.month = data.date.slice(0, 7);
         }
         if (data.note !== undefined) updates.reason = data.note;
-        await updateDoc(advDoc.ref, updates);
-      }
+        tx.update(advDoc.ref, updates);
+
+        // Update employee_ledger
+        if (!ledgerSnap.empty) {
+          const ledgerDoc = ledgerSnap.docs[0];
+          const ledgerUpdates: any = { updatedAt: now };
+          if (data.amount !== undefined) ledgerUpdates.amount = data.amount;
+          if (data.staffId !== undefined) ledgerUpdates.staffId = data.staffId;
+          if (data.date !== undefined) {
+             ledgerUpdates.date = data.date;
+             ledgerUpdates.month = data.date.slice(0, 7);
+          }
+          if (data.note !== undefined) ledgerUpdates.note = data.note;
+          tx.update(ledgerDoc.ref, ledgerUpdates);
+        }
+      });
     }
 
     return updateDoc(doc(db, "expenses", id), { ...data, updatedAt: now });
@@ -247,12 +316,33 @@ export const expenseService = {
 
   delete: async (id: string) => {
     expenseMonthCache.clear(); expenseCatCache.clear();
-    const q = query(collection(db, "advanceRecords"), where("expenseId", "==", id));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      await deleteDoc(snap.docs[0].ref);
-    }
-    return deleteDoc(doc(db, "expenses", id));
+    const now = new Date().toISOString();
+
+    const advQ = query(collection(db, "advanceRecords"), where("expenseId", "==", id));
+    const ledgerQ = query(collection(db, "employee_ledger"), where("expenseId", "==", id));
+    const [advSnap, ledgerSnap] = await Promise.all([getDocs(advQ), getDocs(ledgerQ)]);
+
+    const expenseRef = doc(db, "expenses", id);
+
+    await runTransaction(db, async (tx) => {
+      if (!advSnap.empty) {
+        const advDoc = advSnap.docs[0];
+        const adv = advDoc.data() as AdvanceRecord;
+        const staffRef = doc(db, "staff", adv.staffId);
+        const staffSnap = await tx.get(staffRef);
+        if (staffSnap.exists()) {
+          const currentBal = (staffSnap.data() as Staff).outstandingBalance || 0;
+          tx.update(staffRef, { outstandingBalance: Math.max(0, currentBal - adv.amount), updatedAt: now });
+        }
+        tx.delete(advDoc.ref);
+      }
+
+      if (!ledgerSnap.empty) {
+        tx.delete(ledgerSnap.docs[0].ref);
+      }
+
+      tx.delete(expenseRef);
+    });
   },
 };
 
@@ -373,52 +463,81 @@ export const salaryService = {
 
   addRecord: async (
     data: Omit<SalaryRecord, "id" | "createdAt" | "updatedAt">,
-    pendingAdvances: AdvanceRecord[]
+    pendingAdvances?: AdvanceRecord[]
   ) => {
     const now = new Date().toISOString();
-    
+    const staffRef = doc(db, "staff", data.staffId);
+
     await runTransaction(db, async (tx) => {
-      let rolloverAdvanceId = "";
-      const monthStr = `${data.year}-${String(data.month).padStart(2, "0")}`;
-      const totalPendingAmount = pendingAdvances.reduce((sum, a) => sum + a.amount, 0);
-      const actualDeductedAdvance = data.advance;
+      const staffSnap = await tx.get(staffRef);
+      if (!staffSnap.exists()) throw new Error("Staff member not found");
 
-      if (actualDeductedAdvance > 0) {
-        for (const adv of pendingAdvances) {
-          if (!adv.id) continue;
-          const advRef = doc(db, "advanceRecords", adv.id);
-          tx.update(advRef, {
-            status: "deducted",
-            deductedInMonth: monthStr,
-            updatedAt: now
-          });
-        }
+      const staffData = staffSnap.data() as Staff;
+      const currentBal = staffData.outstandingBalance || 0;
 
-        const rolloverAmount = Math.max(0, totalPendingAmount - actualDeductedAdvance);
-        if (rolloverAmount > 0) {
-          const rolloverRef = doc(collection(db, "advanceRecords"));
-          tx.set(rolloverRef, {
-            staffId: data.staffId,
-            amount: rolloverAmount,
-            date: now.split("T")[0],
-            month: monthStr,
-            reason: `Rollover balance from ${monthStr} recovery`,
-            status: "pending",
-            createdAt: now,
-            updatedAt: now
-          });
-          rolloverAdvanceId = rolloverRef.id;
-        }
-      }
+      const outstandingBefore = currentBal;
+      const recoveredAmount = data.advance || 0;
+      const outstandingAfter = Math.max(0, outstandingBefore - recoveredAmount);
 
       const salaryRef = doc(salaryCol);
       tx.set(salaryRef, {
         ...data,
-        advanceIds: pendingAdvances.map(a => a.id!),
-        rolloverAdvanceId: rolloverAdvanceId || null,
+        grossSalary: (data as any).grossSalary || (data.baseSalary + data.overtime + data.bonus - data.extraDeduction),
+        outstandingBefore,
+        recoveredAmount,
+        outstandingAfter,
         createdAt: now,
         updatedAt: now
       });
+
+      if (recoveredAmount > 0) {
+        const recoveryLedgerRef = doc(collection(db, "employee_ledger"));
+        tx.set(recoveryLedgerRef, {
+          staffId: data.staffId,
+          type: "salary_recovery",
+          amount: recoveredAmount,
+          date: now.split("T")[0],
+          month: `${data.year}-${String(data.month).padStart(2, "0")}`,
+          note: `Auto-recovery in salary month ${data.year}-${String(data.month).padStart(2, "0")}`,
+          salaryRecordId: salaryRef.id,
+          createdAt: now,
+          updatedAt: now
+        });
+      }
+
+      const genLedgerRef = doc(collection(db, "employee_ledger"));
+      tx.set(genLedgerRef, {
+        staffId: data.staffId,
+        type: "salary_generated",
+        amount: data.finalSalary,
+        date: now.split("T")[0],
+        month: `${data.year}-${String(data.month).padStart(2, "0")}`,
+        note: `Salary generated for ${data.year}-${String(data.month).padStart(2, "0")}`,
+        salaryRecordId: salaryRef.id,
+        createdAt: now,
+        updatedAt: now
+      });
+
+      tx.update(staffRef, {
+        outstandingBalance: outstandingAfter,
+        updatedAt: now
+      });
+
+      if (pendingAdvances && pendingAdvances.length > 0 && recoveredAmount > 0) {
+        const monthStr = `${data.year}-${String(data.month).padStart(2, "0")}`;
+        let remainingToDeduct = recoveredAmount;
+        for (const adv of pendingAdvances) {
+          if (!adv.id) continue;
+          const advRef = doc(db, "advanceRecords", adv.id);
+          if (remainingToDeduct >= adv.amount) {
+            tx.update(advRef, { status: "deducted", deductedInMonth: monthStr, updatedAt: now });
+            remainingToDeduct -= adv.amount;
+          } else if (remainingToDeduct > 0) {
+            tx.update(advRef, { amount: adv.amount - remainingToDeduct, updatedAt: now });
+            remainingToDeduct = 0;
+          }
+        }
+      }
     });
   },
 
@@ -426,46 +545,40 @@ export const salaryService = {
     updateDoc(doc(db, "salaryRecords", id), { ...data, updatedAt: new Date().toISOString() }),
 
   deleteRecord: async (id: string) => {
-    const q = query(salaryPaymentsCol, where("salaryRecordId", "==", id));
-    const snap = await getDocs(q);
-    const paymentRefs = snap.docs.map(d => d.ref);
+    const paymentsSnap = await getDocs(query(salaryPaymentsCol, where("salaryRecordId", "==", id)));
+    const paymentRefs = paymentsSnap.docs.map(d => d.ref);
+
+    const ledgerSnap = await getDocs(query(collection(db, "employee_ledger"), where("salaryRecordId", "==", id)));
+    const ledgerRefs = ledgerSnap.docs.map(d => d.ref);
 
     const recordRef = doc(db, "salaryRecords", id);
+    const now = new Date().toISOString();
+
     await runTransaction(db, async (tx) => {
       const recordSnap = await tx.get(recordRef);
       if (recordSnap.exists()) {
         const record = recordSnap.data() as SalaryRecord;
-
-        if (record.advanceIds && record.advanceIds.length > 0) {
-          for (const advId of record.advanceIds) {
-            const advRef = doc(db, "advanceRecords", advId);
-            tx.update(advRef, {
-              status: "pending",
-              deductedInMonth: null,
-              updatedAt: new Date().toISOString()
-            });
+        const recovered = record.advance || 0;
+        if (recovered > 0) {
+          const staffRef = doc(db, "staff", record.staffId);
+          const staffSnap = await tx.get(staffRef);
+          if (staffSnap.exists()) {
+            const currentBal = (staffSnap.data() as Staff).outstandingBalance || 0;
+            tx.update(staffRef, { outstandingBalance: currentBal + recovered, updatedAt: now });
           }
-        }
-
-        if ((record as any).rolloverAdvanceId) {
-          const rolloverRef = doc(db, "advanceRecords", (record as any).rolloverAdvanceId);
-          tx.delete(rolloverRef);
         }
       }
 
+      for (const lRef of ledgerRefs) {
+        tx.delete(lRef);
+      }
       for (const pRef of paymentRefs) {
         tx.delete(pRef);
       }
-
       tx.delete(recordRef);
     });
   },
 
-  /**
-   * Add a payment and atomically update the salary record totals.
-   * Uses Firestore runTransaction for consistency — prevents race conditions
-   * when two devices try to record payments simultaneously.
-   */
   addPayment: async (data: Omit<SalaryPayment, "id" | "createdAt">): Promise<string> => {
     const now = new Date().toISOString();
     const recordRef = doc(db, "salaryRecords", data.salaryRecordId);
@@ -484,12 +597,10 @@ export const salaryService = {
       const status: SalaryRecord["status"] =
         remainingDue <= 0 ? "paid" : newTotalPaid > 0 ? "partial" : "pending";
 
-      // Write the new payment doc inside the transaction
       const paymentRef = doc(salaryPaymentsCol);
       tx.set(paymentRef, { ...data, createdAt: now });
       newPaymentId = paymentRef.id;
 
-      // Automatically create an expense record for this salary payment
       const expenseRef = doc(collection(db, "expenses"));
       tx.set(expenseRef, {
         title: `Salary Payment`,
@@ -502,7 +613,19 @@ export const salaryService = {
         updatedAt: now,
       });
 
-      // Atomically update the salary record
+      const ledgerRef = doc(collection(db, "employee_ledger"));
+      tx.set(ledgerRef, {
+        staffId: data.staffId,
+        type: "salary_paid",
+        amount: data.amountPaid,
+        date: data.paymentDate,
+        month: data.paymentDate.slice(0, 7),
+        note: data.note || `Salary payment of ₹${data.amountPaid}`,
+        salaryRecordId: data.salaryRecordId,
+        createdAt: now,
+        updatedAt: now
+      });
+
       tx.update(recordRef, {
         totalPaid: newTotalPaid,
         remainingDue,
@@ -592,5 +715,62 @@ export const advanceService = {
   add: async (data: Omit<AdvanceRecord, "id" | "createdAt" | "updatedAt">) => {
     const now = new Date().toISOString();
     return addDoc(advancesCol, { ...data, createdAt: now, updatedAt: now });
+  }
+};
+
+// ─── LEDGER SERVICE ────────────────────────────────────────────────────────────
+const ledgerCol = collection(db, "employee_ledger");
+
+export const ledgerService = {
+  subscribeByStaff: (staffId: string, cb: (d: LedgerEntry[]) => void) => {
+    const q = query(ledgerCol, where("staffId", "==", staffId));
+    return onSnapshot(q, s => {
+      const data = s.docs.map(mapDoc<LedgerEntry>);
+      data.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+      cb(data);
+    }, err => console.error("[ledgerService.subscribeByStaff]", err));
+  },
+  
+  getByStaff: async (staffId: string): Promise<LedgerEntry[]> => {
+    const snap = await getDocs(query(ledgerCol, where("staffId", "==", staffId)));
+    const data = snap.docs.map(mapDoc<LedgerEntry>);
+    data.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+    return data;
+  },
+
+  addEntry: async (data: Omit<LedgerEntry, "id" | "createdAt" | "updatedAt">): Promise<string> => {
+    const now = new Date().toISOString();
+    const staffRef = doc(db, "staff", data.staffId);
+    let newEntryId = "";
+
+    await runTransaction(db, async (tx) => {
+      const staffSnap = await tx.get(staffRef);
+      if (!staffSnap.exists()) throw new Error("Staff member not found");
+
+      const staffData = staffSnap.data() as Staff;
+      const currentBal = staffData.outstandingBalance || 0;
+
+      let balanceDiff = 0;
+      if (data.type === "salary_advance") {
+        balanceDiff = data.amount;
+      } else if (data.type === "salary_recovery" || data.type === "manual_repayment") {
+        balanceDiff = -data.amount;
+      } else if (data.type === "manual_adjustment") {
+        balanceDiff = data.amount;
+      }
+
+      const newBal = currentBal + balanceDiff;
+
+      const ledgerRef = doc(ledgerCol);
+      tx.set(ledgerRef, { ...data, createdAt: now, updatedAt: now });
+      newEntryId = ledgerRef.id;
+
+      tx.update(staffRef, {
+        outstandingBalance: newBal,
+        updatedAt: now
+      });
+    });
+
+    return newEntryId;
   }
 };

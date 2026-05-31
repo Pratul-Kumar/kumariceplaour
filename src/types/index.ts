@@ -17,6 +17,7 @@ export interface Staff {
   status: StaffStatus;
   address?: string;
   note?: string;
+  outstandingBalance?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -78,6 +79,10 @@ export interface SalaryRecord {
   advanceIds?: string[]; // tracks which advances were recovered in this salary
   rolloverAdvanceId?: string; // tracks any rollover advance created
   note?: string;
+  grossSalary?: number;
+  outstandingBefore?: number;
+  recoveredAmount?: number;
+  outstandingAfter?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -275,3 +280,29 @@ export function calculateSalary(input: SalaryCalculationInput): SalaryCalculatio
     };
   }
 }
+
+// ============================================================
+// EMPLOYEE FINANCIAL LEDGER
+// ============================================================
+export type LedgerType =
+  | "salary_advance"
+  | "salary_recovery"
+  | "manual_repayment"
+  | "manual_adjustment"
+  | "salary_generated"
+  | "salary_paid";
+
+export interface LedgerEntry {
+  id?: string;
+  staffId: string;
+  type: LedgerType;
+  amount: number;
+  date: string;
+  month: string;
+  note?: string;
+  expenseId?: string;
+  salaryRecordId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+

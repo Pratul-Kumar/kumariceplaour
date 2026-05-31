@@ -130,31 +130,35 @@ function SalaryCard({
           </div>
 
           {/* Salary breakdown grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
             <div className="bg-glass-bg rounded-xl p-3 border border-glass-border">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Base Salary</p>
-              <p className="text-sm font-bold text-foreground">{formatCurrency(record.baseSalary)}</p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Gross Salary</p>
+              <p className="text-sm font-bold text-foreground">
+                {formatCurrency(record.grossSalary ?? (record.baseSalary + (record.overtime || 0) + (record.bonus || 0) - (record.extraDeduction || 0)))}
+              </p>
             </div>
-            {record.previousDue > 0 && (
-              <div className="bg-amber-500/10 rounded-xl p-3 border border-amber-500/20">
-                <p className="text-[10px] font-bold text-amber-500/70 uppercase tracking-widest mb-0.5">Previous Due</p>
-                <p className="text-sm font-bold text-amber-400">+{formatCurrency(record.previousDue)}</p>
-              </div>
-            )}
             <div className="bg-glass-bg rounded-xl p-3 border border-glass-border">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Net Payable</p>
-              <p className="text-sm font-bold text-foreground">{formatCurrency(totalDue)}</p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Outstanding Advance</p>
+              <p className="text-sm font-bold text-amber-500">
+                {formatCurrency(record.outstandingBefore ?? 0)}
+              </p>
+            </div>
+            <div className="bg-rose-500/10 rounded-xl p-3 border border-rose-500/20">
+              <p className="text-[10px] font-bold text-rose-500/70 uppercase tracking-widest mb-0.5">Recovered This Month</p>
+              <p className="text-sm font-bold text-rose-400">
+                -{formatCurrency(record.recoveredAmount ?? record.advance)}
+              </p>
             </div>
             <div className="bg-emerald-500/10 rounded-xl p-3 border border-emerald-500/20">
-              <p className="text-[10px] font-bold text-emerald-500/70 uppercase tracking-widest mb-0.5">Paid</p>
-              <p className="text-sm font-bold text-emerald-400">{formatCurrency(record.totalPaid)}</p>
-            </div>
-            <div className={`rounded-xl p-3 border ${record.remainingDue > 0 ? "bg-red-500/10 border-red-500/20" : "bg-emerald-500/10 border-emerald-500/20"}`}>
-              <p className={`text-[10px] font-bold uppercase tracking-widest ${record.remainingDue > 0 ? "text-muted-foreground" : record.remainingDue < 0 ? "text-orange-500/70" : "text-emerald-500/70"}`}>
-                {record.remainingDue > 0 ? "Remaining" : record.remainingDue < 0 ? "Owes Company" : "Settled"}
+              <p className="text-[10px] font-bold text-emerald-500/70 uppercase tracking-widest mb-0.5">Final Paid (Payout)</p>
+              <p className="text-sm font-bold text-emerald-400">
+                {formatCurrency(record.finalSalary)}
               </p>
-              <p className={`text-sm font-bold ${record.remainingDue > 0 ? "text-red-400" : record.remainingDue < 0 ? "text-orange-400" : "text-emerald-400"}`}>
-                {record.remainingDue < 0 ? "-" : ""}{formatCurrency(Math.abs(record.remainingDue))}
+            </div>
+            <div className="bg-glass-bg rounded-xl p-3 border border-glass-border">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Remaining Outstanding</p>
+              <p className="text-sm font-bold text-foreground">
+                {formatCurrency(record.outstandingAfter ?? 0)}
               </p>
             </div>
           </div>
@@ -252,6 +256,7 @@ export function SalaryManagement() {
   const [previewDue, setPreviewDue] = useState(0); // previous due shown in preview
   const [previewActualDeduct, setPreviewActualDeduct] = useState(0);
   const [previewRollover, setPreviewRollover] = useState(0);
+  const [previewIsCapped, setPreviewIsCapped] = useState(false);
   const [outstandingRecovery, setOutstandingRecovery] = useState(0);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast } = useToast();
@@ -306,6 +311,7 @@ export function SalaryManagement() {
       setPreviewCalc(null);
       setPreviewActualDeduct(0);
       setPreviewRollover(0);
+      setPreviewIsCapped(false);
       return;
     }
     const staff = staffList.find(s => s.id === watchedStaffId);
@@ -316,18 +322,12 @@ export function SalaryManagement() {
       try {
         const [yrStr, moStr] = watchedMonth.split("-");
         const daysInMonth = new Date(Number(yrStr), Number(moStr), 0).getDate();
-        const [attRecords, lastUnpaid, pendingAdvances] = await Promise.all([
+        const [attRecords, lastUnpaid] = await Promise.all([
           attendanceService.getByStaffAndMonth(watchedStaffId, watchedMonth),
-          salaryService.getLastUnpaidRecord(watchedStaffId, Number(yrStr), Number(moStr)),
-          advanceService.getPendingByStaff(watchedStaffId)
+          salaryService.getLastUnpaidRecord(watchedStaffId, Number(yrStr), Number(moStr))
         ]);
         const prevDue = lastUnpaid?.remainingDue || 0;
-        const autoAdvanceAmount = pendingAdvances.reduce((sum, a) => sum + a.amount, 0);
-        
-        // Auto-fill advance field if it's 0 to show the recovered amount
-        if (Number(watchedAdvance) === 0 && autoAdvanceAmount > 0) {
-          setGenValue("advance", autoAdvanceAmount);
-        }
+        const outstandingBalance = staff.outstandingBalance || 0;
 
         // Calculate earnings before advance to get the max recoverable amount
         const earningsCalc = calculateSalary({
@@ -339,12 +339,12 @@ export function SalaryManagement() {
           extraDeduction: Number(watchedExtra) || 0,
         });
 
-        setOutstandingRecovery(autoAdvanceAmount);
+        setOutstandingRecovery(outstandingBalance);
 
         let requestedAdvance = 0;
-        if (autoAdvanceAmount > 0) {
+        if (outstandingBalance > 0) {
           if (watchedRecoveryOption === "full") {
-            requestedAdvance = autoAdvanceAmount;
+            requestedAdvance = outstandingBalance;
           } else if (watchedRecoveryOption === "partial") {
             requestedAdvance = Number(watchedRecoveryAmount) || 0;
           }
@@ -354,7 +354,8 @@ export function SalaryManagement() {
 
         const maxRecoverable = Math.max(0, earningsCalc.finalSalary);
         const actualDeductedAdvance = Math.min(requestedAdvance, maxRecoverable);
-        const rolloverAmount = Math.max(0, autoAdvanceAmount - actualDeductedAdvance);
+        const rolloverAmount = Math.max(0, outstandingBalance - actualDeductedAdvance);
+        const isCapped = requestedAdvance > actualDeductedAdvance && requestedAdvance > 0;
 
         const result = calculateSalary({
           staff,
@@ -369,11 +370,13 @@ export function SalaryManagement() {
         setPreviewDue(prevDue);
         setPreviewActualDeduct(actualDeductedAdvance);
         setPreviewRollover(rolloverAmount);
+        setPreviewIsCapped(isCapped);
       } catch {
         // Preview errors are non-critical — just clear it
         setPreviewCalc(null);
         setPreviewActualDeduct(0);
         setPreviewRollover(0);
+        setPreviewIsCapped(false);
         setOutstandingRecovery(0);
       }
     }, 400);
@@ -424,7 +427,7 @@ export function SalaryManagement() {
       ]);
 
       const previousDue = lastUnpaid?.remainingDue || 0;
-      const autoAdvanceAmount = pendingAdvances.reduce((sum, a) => sum + a.amount, 0);
+      const outstandingBalance = staff.outstandingBalance || 0;
 
       // Calculate earnings before advance to get the max recoverable amount
       const earningsCalc = calculateSalary({
@@ -437,13 +440,13 @@ export function SalaryManagement() {
       });
 
       let requestedAdvance = 0;
-      if (autoAdvanceAmount > 0) {
+      if (outstandingBalance > 0) {
         if (data.recoveryOption === "full") {
-          requestedAdvance = autoAdvanceAmount;
+          requestedAdvance = outstandingBalance;
         } else if (data.recoveryOption === "partial") {
           requestedAdvance = data.recoveryAmount || 0;
         }
-        requestedAdvance = Math.min(requestedAdvance, autoAdvanceAmount);
+        requestedAdvance = Math.min(requestedAdvance, outstandingBalance);
       } else {
         requestedAdvance = data.advance || 0;
       }
@@ -471,6 +474,7 @@ export function SalaryManagement() {
         leaveDeduction: calc.leaveDeductionAmount,
         extraDeduction: data.extraDeduction,
         overtime: calc.overtimeAmount,
+        grossSalary: calc.finalSalary + actualDeductedAdvance,
         finalSalary: calc.finalSalary,
         previousDue,
         totalPaid: 0,
@@ -786,7 +790,7 @@ export function SalaryManagement() {
               {previewDue > 0 && (
                 <p className="text-xs text-amber-500">Previous Due: +{formatCurrency(previewDue)}</p>
               )}
-              {previewRollover > 0 && (
+              {previewIsCapped && (
                 <div className="mt-2.5 p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[11px] text-amber-500 leading-normal">
                   <span className="font-bold">Advance Cap Notice:</span> Capping deduction to {formatCurrency(previewActualDeduct)} to prevent negative payable salary. The remaining {formatCurrency(previewRollover)} will roll over to next month.
                 </div>
