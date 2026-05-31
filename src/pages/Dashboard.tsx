@@ -5,27 +5,26 @@ import {
   IndianRupee, Receipt, Zap, AlertCircle
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, Skeleton, Badge, EmptyState } from "@/components/ui";
-import { expenseService, staffService, salaryService, advanceService } from "@/services";
+import { expenseService, staffService, salaryService, attendanceService } from "@/services";
 import { formatCurrency, formatDate, getCurrentMonth, getLast12Months, formatMonth } from "@/lib/utils";
 import { EXPENSE_CATEGORIES, type Expense } from "@/types";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { db } from "@/firebase/config";
 
 // ─── Lazy-load the entire charts section ────────────────────────────────────
-// recharts is 84KB gzip. Deferring it means stat cards appear instantly
-// while recharts loads in the background after initial paint.
 const DashboardCharts = lazy(() => import("./DashboardCharts"));
 
 interface DashboardStats {
   todayExpenses: number;
   monthExpenses: number;
   pendingSalary: number;
-  pendingAdvances: number;
+  outstandingRecoveries: number;
+  todayAttendance: string;
   staffCount: number;
   recentExpenses: Expense[];
   categoryTotals: Record<string, number>;
   monthlyTrend: { month: string; amount: number }[];
 }
-
-const CHART_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#f97316", "#ec4899", "#8b5cf6", "#64748b"];
 
 const StatCard = memo(function StatCard({ icon: Icon, label, value, sub, color, loading, onClick }: {
   icon: React.ComponentType<{ className?: string }>;
@@ -40,9 +39,9 @@ const StatCard = memo(function StatCard({ icon: Icon, label, value, sub, color, 
   return (
     <Card 
       onClick={onClick}
-      className={`relative overflow-hidden group glass-card ${onClick ? 'cursor-pointer hover:shadow-[0_0_15px_var(--glass-bg)] hover:-translate-y-0.5 transition-all' : ''}`}
+      className={`relative overflow-hidden group glass-card ${onClick ? "cursor-pointer hover:shadow-[0_0_15px_var(--glass-bg)] hover:-translate-y-0.5 transition-all" : ""}`}
     >
-      <div className={`card-accent-primary absolute inset-0 rounded-2xl pointer-events-none`} />
+      <div className="card-accent-primary absolute inset-0 rounded-2xl pointer-events-none" />
       <CardContent className="p-4 sm:p-5 h-full flex flex-col justify-between">
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className={`p-2.5 rounded-xl bg-gradient-to-br ${color} shadow-lg shrink-0`}>
@@ -68,7 +67,8 @@ export function Dashboard() {
     todayExpenses: 0,
     monthExpenses: 0,
     pendingSalary: 0,
-    pendingAdvances: 0,
+    outstandingRecoveries: 0,
+    todayAttendance: "0 / 0 Present",
     staffCount: 0,
     recentExpenses: [],
     categoryTotals: {},
@@ -76,17 +76,21 @@ export function Dashboard() {
   });
   
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const month = getCurrentMonth();
     const today = new Date().toISOString().split("T")[0];
 
+    // Exclude staff transactions from operational expenses
     const unsubExpenses = expenseService.subscribeByMonth(month, (data) => {
       let todayTotal = 0;
       let monthTotal = 0;
       const catTotals: Record<string, number> = {};
       
-      data.forEach(exp => {
+      const operationalData = data.filter(exp => exp.category !== "salary" && exp.category !== "salary_advance" && exp.category !== "bonus");
+      
+      operationalData.forEach(exp => {
         monthTotal += exp.amount;
         if (exp.date === today) todayTotal += exp.amount;
         catTotals[exp.category] = (catTotals[exp.category] || 0) + exp.amount;
@@ -97,39 +101,48 @@ export function Dashboard() {
         monthExpenses: monthTotal,
         todayExpenses: todayTotal,
         categoryTotals: catTotals,
-        recentExpenses: data.slice(0, 8)
+        recentExpenses: operationalData.slice(0, 8)
       }));
       setLoading(false);
     });
 
     const unsubStaff = staffService.subscribeAll((data) => {
-      setStats(prev => ({ ...prev, staffCount: data.filter(s => s.status === 'active').length }));
+      const activeStaff = data.filter(s => s.status === "active");
+      const outstandingTotal = data.reduce((sum, s) => sum + (s.outstandingBalance || 0), 0);
+      
+      attendanceService.getTodaySummary().then(summary => {
+        const activeCount = activeStaff.length;
+        const presentCount = summary.present + (summary.half_day * 0.5);
+        setStats(prev => ({
+          ...prev,
+          staffCount: activeCount,
+          outstandingRecoveries: outstandingTotal,
+          todayAttendance: `${presentCount} / ${activeCount} Present`
+        }));
+      });
     });
 
     const unsubSalary = salaryService.subscribePending((data) => {
-      // Filter out invalid records where remainingDue might be 0 but status is pending
       const pendingTotal = data.filter(r => r.remainingDue > 0).reduce((sum, r) => sum + r.remainingDue, 0);
       setStats(prev => ({ ...prev, pendingSalary: pendingTotal }));
     });
 
-    const unsubAdvances = advanceService.subscribeAll((data) => {
-      const pendingTotal = data.filter(a => a.status === "pending").reduce((sum, a) => sum + a.amount, 0);
-      setStats(prev => ({ ...prev, pendingAdvances: pendingTotal }));
-    });
-
-
-
-    // Monthly trend — updated whenever current month snapshot fires
-    // For past 6 months: use getDocs (historical, stable data)
+    // Monthly trend representing ONLY operational expenses
     const months = getLast12Months().slice(-6);
     Promise.all(
-      months.map(m =>
-        expenseService.getMonthTotal(m).then(amount => ({
+      months.map(async m => {
+        const q = query(collection(db, "expenses"), where("date", ">=", `${m}-01`), where("date", "<=", `${m}-31`));
+        const snap = await getDocs(q);
+        const amount = snap.docs
+          .map(d => d.data() as Expense)
+          .filter(e => e.category !== "salary" && e.category !== "salary_advance" && e.category !== "bonus")
+          .reduce((sum, e) => sum + e.amount, 0);
+        return {
           month: formatMonth(m).split(" ")[0].slice(0, 3),
           amount,
           key: m,
-        }))
-      )
+        };
+      })
     ).then(historical => {
       setStats(prev => ({
         ...prev,
@@ -141,7 +154,6 @@ export function Dashboard() {
       unsubExpenses();
       unsubStaff();
       unsubSalary();
-      unsubAdvances();
     };
   }, []);
 
@@ -166,8 +178,6 @@ export function Dashboard() {
     [stats.categoryTotals]
   );
 
-  const navigate = useNavigate();
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -176,16 +186,15 @@ export function Dashboard() {
         <p className="text-muted-foreground text-sm mt-1">Here's your Kumar Ice Parlour business overview.</p>
       </div>
 
-      {/* Stat Cards — render immediately, no chart dependency */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <StatCard icon={TrendingDown} label="Today's Spend" value={formatCurrency(stats.todayExpenses)} sub="Today" color="bg-red-500" loading={loading} onClick={() => navigate('/expenses')} />
-        <StatCard icon={Receipt} label="This Month" value={formatCurrency(stats.monthExpenses)} sub={formatMonth(getCurrentMonth())} color="bg-violet-500" loading={loading} onClick={() => navigate('/expenses')} />
-        <StatCard icon={IndianRupee} label="Salary Due" value={formatCurrency(stats.pendingSalary)} sub="Unpaid" color="bg-amber-500" loading={loading} onClick={() => navigate('/salary')} />
-        <StatCard icon={Zap} label="Advances" value={formatCurrency(stats.pendingAdvances)} sub="Pending" color="bg-rose-500" loading={loading} />
-        <StatCard icon={Users} label="Staff" value={String(stats.staffCount)} sub="Total active" color="bg-emerald-500" loading={loading} onClick={() => navigate('/staff')} />
+      {/* Stat Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard icon={IndianRupee} label="Pending Salaries" value={formatCurrency(stats.pendingSalary)} sub="Unpaid" color="bg-amber-500" loading={loading} onClick={() => navigate("/staff")} />
+        <StatCard icon={Zap} label="Outstanding Recoveries" value={formatCurrency(stats.outstandingRecoveries)} sub="Advances" color="bg-rose-500" loading={loading} onClick={() => navigate("/staff")} />
+        <StatCard icon={Clock} label="Today's Attendance" value={stats.todayAttendance} sub="Today" color="bg-emerald-500" loading={loading} onClick={() => navigate("/attendance")} />
+        <StatCard icon={Receipt} label="Monthly Expenses" value={formatCurrency(stats.monthExpenses)} sub={formatMonth(getCurrentMonth())} color="bg-violet-500" loading={loading} onClick={() => navigate("/expenses")} />
       </div>
 
-      {/* Charts + Activity — lazy loaded after stat cards paint */}
+      {/* Charts + Activity */}
       <Suspense fallback={
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <Skeleton className="h-64 rounded-xl lg:col-span-2" />

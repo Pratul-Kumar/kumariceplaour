@@ -16,10 +16,7 @@ const NAV_ITEMS = [
   { to: "/staff",     icon: Users,           label: "Staff",      color: "from-blue-500 to-cyan-500" },
   { to: "/attendance",icon: ClipboardCheck,  label: "Attendance", color: "from-emerald-500 to-teal-500" },
   { to: "/expenses",  icon: Receipt,         label: "Expenses",   color: "from-rose-500 to-pink-500" },
-  { to: "/salary",    icon: IndianRupee,     label: "Salary",     color: "from-amber-500 to-orange-500" },
   { to: "/analytics", icon: TrendingUp,      label: "Analytics",  color: "from-purple-500 to-violet-500" },
-  { to: "/history",   icon: History,         label: "History",    color: "from-slate-400 to-slate-500" },
-  { to: "/settings",  icon: Settings,        label: "Settings",   color: "from-gray-400 to-gray-500" },
 ];
 
 const NavItem = memo(function NavItem({

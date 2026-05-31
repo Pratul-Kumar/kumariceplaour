@@ -91,9 +91,10 @@ export function ExpenseManagement() {
     const setup = async () => {
       unsubStaff = staffService.subscribeAll((data) => setStaff(data));
       unsubExpenses = expenseService.subscribeByMonth(filterMonth, (data) => {
-        setExpenses(data);
+        const filteredData = data.filter(e => e.category !== "salary" && e.category !== "salary_advance" && e.category !== "bonus");
+        setExpenses(filteredData);
         const totals: Record<string, number> = {};
-        data.forEach(e => {
+        filteredData.forEach(e => {
           totals[e.category] = (totals[e.category] || 0) + e.amount;
         });
         setCategoryTotals(totals);
@@ -358,26 +359,8 @@ export function ExpenseManagement() {
           {/* 1. Category Field (First) */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Category</label>
-            <Select options={EXPENSE_CATEGORIES.filter(c => c.value !== "salary").map((c) => ({ value: c.value, label: `${c.icon} ${c.label}` }))} {...register("category")} className="h-12 bg-card/50" />
+            <Select options={EXPENSE_CATEGORIES.filter(c => c.value !== "salary" && c.value !== "salary_advance" && c.value !== "bonus").map((c) => ({ value: c.value, label: `${c.icon} ${c.label}` }))} {...register("category")} className="h-12 bg-card/50" />
           </div>
-          
-          {/* 2. Conditional Staff Field */}
-          {watchCategory === "salary_advance" && (
-            <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center justify-between">
-                Staff Member <span className="text-red-400 normal-case font-medium tracking-normal">*Required</span>
-              </label>
-              <select {...register("staffId")} className="flex h-12 w-full rounded-xl border border-glass-border bg-card/50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-inner">
-                <option value="">Select Employee</option>
-                {staff.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
-              </select>
-              {errors.staffId && <p className="text-xs text-red-400">{errors.staffId.message}</p>}
-              <div className="mt-2 bg-warning/10 border border-warning/20 text-warning text-xs rounded-xl p-3 font-medium flex items-start gap-2">
-                <TrendingDown className="h-4 w-4 shrink-0" />
-                <p>This advance will be strictly tracked and auto-deducted from their upcoming salary computation.</p>
-              </div>
-            </div>
-          )}
 
           {/* 3. Title Field (Auto-generates but editable) */}
           <div className="space-y-1.5">
