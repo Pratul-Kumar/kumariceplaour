@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getDocs, deleteDoc, query, where, doc } from "firebase/firestore";
+import { getFirestore, collection, getDocs } from "firebase/firestore";
 import fs from "fs/promises";
 
 async function loadEnv() {
@@ -22,7 +22,7 @@ async function loadEnv() {
   return { ...process.env, ...env };
 }
 
-async function run() {
+async function backup() {
   const env = await loadEnv();
 
   const firebaseConfig = {
@@ -42,37 +42,44 @@ async function run() {
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  try {
-    const q = query(collection(db, "salaryRecords"), where("status", "!=", "paid"));
-    const snap = await getDocs(q);
-    
-    console.log(`Found ${snap.size} non-paid records.`);
-    
-    let deletedCount = 0;
-    const deletedRecords = [];
+  const collectionsToBackup = [
+    "staff",
+    "expenses",
+    "attendance",
+    "salaryRecords",
+    "salaryPayments",
+    "advanceRecords",
+    "leaveRecords",
+    "temporaryStaff",
+    "employee_ledger",
+    "settings"
+  ];
 
-    for (const d of snap.docs) {
-      const data = d.data();
-      console.log(`Record ID: ${d.id}, Remaining Due: ${data.remainingDue}, Status: ${data.status}`);
-      
-      if (data.remainingDue > 0) {
-        deletedRecords.push({ id: d.id, ...data });
-        console.log(`Deleting record with ${data.remainingDue} due...`);
-        await deleteDoc(doc(db, "salaryRecords", d.id));
-        deletedCount++;
+  const backupData = {};
+
+  try {
+    console.log("Starting Firestore database backup...");
+    for (const colName of collectionsToBackup) {
+      console.log(`Fetching collection: ${colName}...`);
+      try {
+        const snap = await getDocs(collection(db, colName));
+        backupData[colName] = snap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        console.log(`-> Fetched ${snap.size} documents from ${colName}.`);
+      } catch (err) {
+        console.error(`Error fetching collection ${colName}:`, err.message);
       }
     }
-    
-    if (deletedRecords.length > 0) {
-      const filename = `backup-deleted-records-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-      await fs.writeFile(filename, JSON.stringify(deletedRecords, null, 2), "utf-8");
-      console.log(`Saved backup of deleted records to ${filename}`);
-    }
 
-    console.log(`Deleted ${deletedCount} records successfully.`);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filename = `backup-data-${timestamp}.json`;
+    await fs.writeFile(filename, JSON.stringify(backupData, null, 2), "utf-8");
+    console.log(`\nBackup successfully written to ${filename}`);
   } catch (err) {
-    console.error("Error:", err);
+    console.error("Backup failed:", err);
   }
 }
 
-run();
+backup();
