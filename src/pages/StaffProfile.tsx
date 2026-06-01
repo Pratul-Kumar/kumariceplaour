@@ -9,8 +9,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, Badge, Skeleton, Button, Input, Spinner } from "@/components/ui";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { staffService, salaryService, attendanceService, ledgerService, expenseService, advanceService } from "@/services";
-import { type Staff, type SalaryRecord, type Attendance, type SalaryPayment, type LedgerEntry } from "@/types";
+import { staffService, salaryService, attendanceService, ledgerService, expenseService, dueService } from "@/services";
+import { type Staff, type SalaryRecord, type Attendance, type SalaryPayment, type LedgerEntry, type DueRecord, type DueType } from "@/types";
 import { formatCurrency, formatDate, formatMonth, getInitials, generateAvatarColor, getCurrentMonth } from "@/lib/utils";
 import { calculateSalary } from "@/types";
 
@@ -28,6 +28,7 @@ export function StaffProfile() {
   const [salaryHistory, setSalaryHistory] = useState<SalaryRecord[]>([]);
   const [paymentsHistory, setPaymentsHistory] = useState<SalaryPayment[]>([]);
   const [ledgerHistory, setLedgerHistory] = useState<LedgerEntry[]>([]);
+  const [duesHistory, setDuesHistory] = useState<DueRecord[]>([]);
   const [currentMonthAtt, setCurrentMonthAtt] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"overview" | "salary" | "ledger" | "attendance">("salary");
@@ -132,12 +133,20 @@ export function StaffProfile() {
       }
     });
 
+    // Real-time subscription for dues history
+    const unsubDues = dueService.subscribeByStaff(staffId, (dues) => {
+      if (active) {
+        setDuesHistory(dues);
+      }
+    });
+
     return () => {
       active = false;
       unsubStaff();
       unsubLedger();
       unsubSalary();
       unsubPayments();
+      unsubDues();
     };
   }, [id]);
 

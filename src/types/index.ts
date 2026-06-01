@@ -25,7 +25,7 @@ export interface Staff {
 // ============================================================
 // ATTENDANCE
 // ============================================================
-export type AttendanceStatus = "present" | "absent" | "half_day";
+export type AttendanceStatus = "present" | "absent" | "half_day" | "leave";
 
 export interface Attendance {
   id?: string;
@@ -210,11 +210,12 @@ export function calculateSalary(input: SalaryCalculationInput): SalaryCalculatio
   const breakdown: string[] = [];
 
   // Count attendance
-  let presentDays = 0, absentDays = 0, halfDays = 0, totalOvertimeHours = 0;
+  let presentDays = 0, absentDays = 0, halfDays = 0, leaveDays = 0, totalOvertimeHours = 0;
   for (const rec of attendanceRecords) {
     if (rec.status === "present")  { presentDays += 1; }
     else if (rec.status === "half_day") { presentDays += 0.5; halfDays += 1; }
     else if (rec.status === "absent")  { absentDays += 1; }
+    else if (rec.status === "leave")   { leaveDays += 1; }
     totalOvertimeHours += rec.overtimeHours || 0;
   }
 
@@ -241,7 +242,7 @@ export function calculateSalary(input: SalaryCalculationInput): SalaryCalculatio
     return { 
       presentDays, 
       absentDays, 
-      leaveDays: 0, 
+      leaveDays, 
       halfDays, 
       totalOvertimeHours, 
       deductedLeaves: 0, 
@@ -268,7 +269,7 @@ export function calculateSalary(input: SalaryCalculationInput): SalaryCalculatio
     return { 
       presentDays, 
       absentDays, 
-      leaveDays: 0, 
+      leaveDays, 
       halfDays, 
       totalOvertimeHours, 
       deductedLeaves: 0, 
@@ -304,5 +305,26 @@ export interface LedgerEntry {
   salaryRecordId?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// ============================================================
+// UNIFIED DUES SYSTEM
+// ============================================================
+export type DueType = "OWNER_TO_EMPLOYEE" | "EMPLOYEE_TO_OWNER";
+
+export interface DueRecord {
+  id?: string;
+  staffId: string;
+  amount: number;
+  remainingAmount: number;
+  type: DueType;
+  reason?: string;
+  notes?: string;
+  linkedSalaryId?: string;
+  date?: string; // YYYY-MM-DD for sorting/display
+  createdAt: string;
+  updatedAt: string;
+  status: "active" | "settled" | "partial";
+  isDeleted?: boolean;
 }
 
