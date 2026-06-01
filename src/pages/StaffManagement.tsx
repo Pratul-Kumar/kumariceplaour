@@ -181,16 +181,16 @@ export function StaffManagement() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
           {filtered.map((s) => (
-            <Card key={s.id} className="group glass-card overflow-hidden">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-4">
+            <Card key={s.id} className="group overflow-hidden">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between mb-3.5">
                   <div className="flex items-center gap-3">
-                    <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${generateAvatarColor(s.name)} flex items-center justify-center text-white font-bold text-sm shadow-lg`}>
+                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${generateAvatarColor(s.name)} flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm`}>
                       {getInitials(s.name)}
                     </div>
                     <div>
-                      <p className="font-semibold text-foreground">{s.name}</p>
-                      <p className="text-xs text-muted-foreground capitalize">{s.role}</p>
+                      <p className="font-semibold text-foreground text-sm leading-tight">{s.name}</p>
+                      <p className="text-[11px] text-muted-foreground capitalize mt-0.5">{s.role}</p>
                     </div>
                   </div>
                   <Badge variant={s.status === "active" ? "success" : "secondary"} className="cursor-pointer" onClick={() => toggleStatus(s)}>
@@ -198,9 +198,9 @@ export function StaffManagement() {
                   </Badge>
                 </div>
 
-                <div className="space-y-2 text-sm mb-4">
+                <div className="space-y-1.5 text-xs mb-4">
                   <div className="flex items-center gap-2 text-muted-foreground">
-                    <Phone className="h-3.5 w-3.5" /><span>{s.phone}</span>
+                    <Phone className="h-3 w-3" /><span>{s.phone}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Salary</span>
@@ -214,17 +214,16 @@ export function StaffManagement() {
                     <span className="text-muted-foreground">Since</span>
                     <span className="text-foreground">{formatDate(s.joiningDate)}</span>
                   </div>
-
                 </div>
 
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => navigate(`/staff/${s.id}`)}>
+                  <Button variant="outline" size="sm" className="flex-1 gap-1.5 h-9" onClick={() => navigate(`/staff/${s.id}`)}>
                     <Eye className="h-3.5 w-3.5" /> View
                   </Button>
-                  <Button variant="secondary" size="sm" className="flex-1 gap-1.5" onClick={() => openEdit(s)}>
+                  <Button variant="secondary" size="sm" className="flex-1 gap-1.5 h-9" onClick={() => openEdit(s)}>
                     <Edit2 className="h-3.5 w-3.5" /> Edit
                   </Button>
-                  <button onClick={() => setDeleteId(s.id!)} className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors">
+                  <button onClick={() => setDeleteId(s.id!)} className="p-2.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>

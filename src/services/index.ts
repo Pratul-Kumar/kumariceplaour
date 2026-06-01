@@ -463,7 +463,8 @@ export const salaryService = {
 
   addRecord: async (
     data: Omit<SalaryRecord, "id" | "createdAt" | "updatedAt">,
-    pendingAdvances?: AdvanceRecord[]
+    pendingAdvances?: AdvanceRecord[],
+    payment?: { amountPaid: number; paymentDate: string; paymentMethod: "cash" | "upi" | "bank" | "other"; note?: string }
   ) => {
     const now = new Date().toISOString();
     const staffRef = doc(db, "staff", data.staffId);
@@ -537,6 +538,44 @@ export const salaryService = {
             remainingToDeduct = 0;
           }
         }
+      }
+
+      if (payment && payment.amountPaid > 0) {
+        const paymentRef = doc(salaryPaymentsCol);
+        tx.set(paymentRef, {
+          salaryRecordId: salaryRef.id,
+          staffId: data.staffId,
+          amountPaid: payment.amountPaid,
+          paymentDate: payment.paymentDate,
+          paymentMethod: payment.paymentMethod,
+          note: payment.note || "",
+          createdAt: now
+        });
+
+        const expenseRef = doc(collection(db, "expenses"));
+        tx.set(expenseRef, {
+          title: `Salary Payment`,
+          amount: payment.amountPaid,
+          category: "salary",
+          date: payment.paymentDate,
+          note: payment.note || "Added from Salary Management",
+          staffId: data.staffId,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        const ledgerRef = doc(collection(db, "employee_ledger"));
+        tx.set(ledgerRef, {
+          staffId: data.staffId,
+          type: "salary_paid",
+          amount: payment.amountPaid,
+          date: payment.paymentDate,
+          month: payment.paymentDate.slice(0, 7),
+          note: payment.note || `Salary payment of ₹${payment.amountPaid}`,
+          salaryRecordId: salaryRef.id,
+          createdAt: now,
+          updatedAt: now
+        });
       }
     });
   },

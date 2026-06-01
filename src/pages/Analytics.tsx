@@ -23,12 +23,12 @@ interface AnalyticsData {
 const CurrencyTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="glass-card !bg-[#0F1322]/90 backdrop-blur-xl border border-glass-border rounded-xl p-3 shadow-2xl text-xs min-w-[130px]">
-      <p className="font-bold text-muted-foreground uppercase tracking-widest text-[9px] mb-2">{label}</p>
+    <div className="bg-popover border border-border rounded-lg p-2.5 shadow-sm text-xs min-w-[120px]">
+      <p className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] mb-1.5">{label}</p>
       {payload.map((p: any, i: number) => (
         <div key={i} className="flex justify-between items-center gap-4 py-0.5">
-          <span className="text-[10px] text-muted-foreground font-semibold uppercase">{p.name.replace(/([A-Z])/g, " $1")}</span>
-          <span className="font-bold text-sm" style={{ color: p.color || p.stroke }}>{formatCurrency(p.value)}</span>
+          <span className="text-[9px] text-muted-foreground font-medium uppercase">{p.name.replace(/([A-Z])/g, " $1")}</span>
+          <span className="font-bold text-xs" style={{ color: p.color || p.stroke }}>{formatCurrency(p.value)}</span>
         </div>
       ))}
     </div>
@@ -38,12 +38,12 @@ const CurrencyTooltip = ({ active, payload, label }: any) => {
 const PercentTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="glass-card !bg-[#0F1322]/90 backdrop-blur-xl border border-glass-border rounded-xl p-3 shadow-2xl text-xs min-w-[130px]">
-      <p className="font-bold text-muted-foreground uppercase tracking-widest text-[9px] mb-2">{label}</p>
+    <div className="bg-popover border border-border rounded-lg p-2.5 shadow-sm text-xs min-w-[120px]">
+      <p className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] mb-1.5">{label}</p>
       {payload.map((p: any, i: number) => (
         <div key={i} className="flex justify-between items-center gap-4 py-0.5">
-          <span className="text-[10px] text-muted-foreground font-semibold uppercase">{p.name.replace(/([A-Z])/g, " $1")}</span>
-          <span className="font-bold text-sm text-emerald-400">{p.value}%</span>
+          <span className="text-[9px] text-muted-foreground font-medium uppercase">{p.name.replace(/([A-Z])/g, " $1")}</span>
+          <span className="font-bold text-xs text-emerald-500">{p.value}%</span>
         </div>
       ))}
     </div>
@@ -129,7 +129,7 @@ export function Analytics() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* 1. Salary Trends Chart */}
-        <Card className="glass-card">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Salary Generated vs Paid</CardTitle>
           </CardHeader>
@@ -139,21 +139,21 @@ export function Analytics() {
                 <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gradGenerated" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#818cf8" stopOpacity={0.2} />
+                      <stop offset="5%" stopColor="#818cf8" stopOpacity={0.15} />
                       <stop offset="95%" stopColor="#818cf8" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gradPaid" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#34d399" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--glass-bg)" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#64748b" }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 9, fill: "#64748b" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
                   <Tooltip content={<CurrencyTooltip />} />
                   <Legend iconSize={8} iconType="circle" wrapperStyle={{ fontSize: 10, paddingTop: 10 }} />
-                  <Area type="monotone" name="Salary Generated" dataKey="salaryGenerated" stroke="#818cf8" strokeWidth={2.5} fill="url(#gradGenerated)" />
-                  <Area type="monotone" name="Salary Paid" dataKey="salaryPaid" stroke="#34d399" strokeWidth={2.5} fill="url(#gradPaid)" />
+                  <Area type="monotone" name="Salary Generated" dataKey="salaryGenerated" stroke="#818cf8" strokeWidth={2} fill="url(#gradGenerated)" />
+                  <Area type="monotone" name="Salary Paid" dataKey="salaryPaid" stroke="#3b82f6" strokeWidth={2} fill="url(#gradPaid)" />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -161,27 +161,33 @@ export function Analytics() {
         </Card>
 
         {/* 2. Recovery Trends Chart */}
-        <Card className="glass-card">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Advance Recovery & Repayments</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? <Skeleton className="h-48 w-full rounded-xl" /> : (
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--glass-bg)" vertical={false} />
+                <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gradRecoveries" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#64748b" }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 9, fill: "#64748b" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
                   <Tooltip content={<CurrencyTooltip />} />
-                  <Bar name="Recoveries" dataKey="recoveries" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={32} />
-                </BarChart>
+                  <Area type="monotone" name="Recoveries" dataKey="recoveries" stroke="#f59e0b" strokeWidth={2} fill="url(#gradRecoveries)" />
+                </AreaChart>
               </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
 
         {/* 3. Attendance Trends Chart */}
-        <Card className="glass-card">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Attendance Rates Trend</CardTitle>
           </CardHeader>
@@ -189,11 +195,11 @@ export function Analytics() {
             {loading ? <Skeleton className="h-48 w-full rounded-xl" /> : (
               <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--glass-bg)" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#64748b" }} axisLine={false} tickLine={false} />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: "#64748b" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
                   <Tooltip content={<PercentTooltip />} />
-                  <Line type="monotone" name="Attendance Rate" dataKey="attendanceRate" stroke="#34d399" strokeWidth={3} dot={{ r: 4, stroke: "#34d399", strokeWidth: 2, fill: "#0B0F19" }} />
+                  <Line type="monotone" name="Attendance Rate" dataKey="attendanceRate" stroke="#10b981" strokeWidth={2} dot={{ r: 3, stroke: "#10b981", strokeWidth: 1.5, fill: "hsl(var(--background))" }} />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -201,7 +207,7 @@ export function Analytics() {
         </Card>
 
         {/* 4. Expense Trends Chart (Operational) */}
-        <Card className="glass-card">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Operational Expenses Trend</CardTitle>
           </CardHeader>
@@ -211,15 +217,15 @@ export function Analytics() {
                 <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gradExpenses" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#c084fc" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#c084fc" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--glass-bg)" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#64748b" }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 9, fill: "#64748b" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
                   <Tooltip content={<CurrencyTooltip />} />
-                  <Area type="monotone" name="Operational Expenses" dataKey="operationalExpenses" stroke="#c084fc" strokeWidth={2.5} fill="url(#gradExpenses)" />
+                  <Area type="monotone" name="Operational Expenses" dataKey="operationalExpenses" stroke="#ef4444" strokeWidth={2} fill="url(#gradExpenses)" />
                 </AreaChart>
               </ResponsiveContainer>
             )}

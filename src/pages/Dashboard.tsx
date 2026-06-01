@@ -35,27 +35,26 @@ const StatCard = memo(function StatCard({ icon: Icon, label, value, sub, color, 
   loading: boolean;
   onClick?: () => void;
 }) {
-  if (loading) return <Skeleton className="h-[120px] rounded-2xl" />;
+  if (loading) return <Skeleton className="h-24 rounded-lg" />;
   return (
     <Card 
       onClick={onClick}
-      className={`relative overflow-hidden group glass-card ${onClick ? "cursor-pointer hover:shadow-[0_0_15px_var(--glass-bg)] hover:-translate-y-0.5 transition-all" : ""}`}
+      className={`relative overflow-hidden group ${onClick ? "cursor-pointer hover:bg-muted/40 transition-colors" : ""}`}
     >
-      <div className="card-accent-primary absolute inset-0 rounded-2xl pointer-events-none" />
-      <CardContent className="p-4 sm:p-5 h-full flex flex-col justify-between">
-        <div className="flex items-start justify-between gap-2 mb-3">
-          <div className={`p-2.5 rounded-xl bg-gradient-to-br ${color} shadow-lg shrink-0`}>
-            <Icon className="h-5 w-5 text-white" />
+      <CardContent className="p-4 h-full flex flex-col justify-between">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className={`p-2 rounded-lg ${color} shrink-0`}>
+            <Icon className="h-4 w-4" />
           </div>
           {sub && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide" style={{ background: "var(--glass-bg)", color: "hsl(var(--muted-foreground))" }}>
+            <span className="px-2 py-0.5 rounded border bg-muted text-[10px] font-medium text-muted-foreground">
               {sub}
             </span>
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest truncate mb-0.5">{label}</p>
-          <p className="text-xl sm:text-2xl font-bold text-foreground truncate">{value}</p>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider truncate mb-0.5">{label}</p>
+          <p className="text-xl font-bold text-foreground truncate">{value}</p>
         </div>
       </CardContent>
     </Card>
@@ -188,10 +187,10 @@ export function Dashboard() {
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={IndianRupee} label="Pending Salaries" value={formatCurrency(stats.pendingSalary)} sub="Unpaid" color="bg-amber-500" loading={loading} onClick={() => navigate("/staff")} />
-        <StatCard icon={Zap} label="Outstanding Recoveries" value={formatCurrency(stats.outstandingRecoveries)} sub="Advances" color="bg-rose-500" loading={loading} onClick={() => navigate("/staff")} />
-        <StatCard icon={Clock} label="Today's Attendance" value={stats.todayAttendance} sub="Today" color="bg-emerald-500" loading={loading} onClick={() => navigate("/attendance")} />
-        <StatCard icon={Receipt} label="Monthly Expenses" value={formatCurrency(stats.monthExpenses)} sub={formatMonth(getCurrentMonth())} color="bg-violet-500" loading={loading} onClick={() => navigate("/expenses")} />
+        <StatCard icon={IndianRupee} label="Pending Salaries" value={formatCurrency(stats.pendingSalary)} sub="Unpaid" color="bg-blue-500/10 text-blue-500 dark:bg-blue-500/20 dark:text-blue-400" loading={loading} onClick={() => navigate("/staff")} />
+        <StatCard icon={Zap} label="Outstanding Recoveries" value={formatCurrency(stats.outstandingRecoveries)} sub="Advances" color="bg-amber-500/10 text-amber-500 dark:bg-amber-500/20 dark:text-amber-400" loading={loading} onClick={() => navigate("/staff")} />
+        <StatCard icon={Clock} label="Today's Attendance" value={stats.todayAttendance} sub="Today" color="bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/20 dark:text-emerald-400" loading={loading} onClick={() => navigate("/attendance")} />
+        <StatCard icon={Receipt} label="Monthly Expenses" value={formatCurrency(stats.monthExpenses)} sub={formatMonth(getCurrentMonth())} color="bg-red-500/10 text-red-500 dark:bg-red-500/20 dark:text-red-400" loading={loading} onClick={() => navigate("/expenses")} />
       </div>
 
       {/* Charts + Activity */}

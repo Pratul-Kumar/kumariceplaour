@@ -30,38 +30,34 @@ const NavItem = memo(function NavItem({
       onClick={onClick}
       className={({ isActive }) =>
         cn(
-          "group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+          "group relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 select-none",
           isActive
-            ? "text-white"
-            : "text-muted-foreground hover:text-foreground hover:bg-glass-bg"
+            ? "bg-muted text-foreground"
+            : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
         )
       }
     >
       {({ isActive }) => (
         <>
-          {/* Active background */}
+          {/* Active left accent line */}
           {isActive && (
-            <span className="absolute inset-0 rounded-xl bg-gradient-to-r from-indigo-500/20 to-violet-500/10 border border-indigo-500/25" />
-          )}
-          {/* Active left accent */}
-          {isActive && (
-            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full bg-gradient-to-b from-indigo-400 to-violet-400 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
+            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r bg-primary" />
           )}
 
-          {/* Icon with gradient bg when active */}
+          {/* Icon with flat bg when active */}
           <span className={cn(
-            "relative z-10 flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-200",
+            "relative z-10 flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150",
             isActive
-              ? `bg-gradient-to-br ${color} shadow-lg`
-              : "bg-glass-bg group-hover:bg-glass-bg"
+              ? "bg-primary/10 text-primary"
+              : "bg-transparent group-hover:bg-muted"
           )}>
-            <Icon className={cn("h-4 w-4", isActive ? "text-white" : "text-muted-foreground group-hover:text-foreground")} />
+            <Icon className="h-4 w-4" />
           </span>
 
           <span className="relative z-10 flex-1">{label}</span>
 
           {isActive && (
-            <ChevronRight className="relative z-10 h-3.5 w-3.5 text-indigo-400 opacity-60" />
+            <ChevronRight className="relative z-10 h-3 w-3 text-muted-foreground" />
           )}
         </>
       )}
@@ -114,34 +110,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* ── Sidebar ───────────────────────────────────────────── */}
       <aside className={cn(
-        "fixed top-0 left-0 h-full w-64 z-50 flex flex-col transition-transform duration-300 ease-out",
+        "fixed top-0 left-0 h-full w-64 z-50 flex flex-col transition-transform duration-300 ease-out border-r border-border bg-card",
         "lg:relative lg:translate-x-0",
-        // Glass sidebar
-        "border-r",
-        sidebarOpen ? "translate-x-0" : "-translate-x-full",
-        "bg-card/95"
+        sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}
-        style={{
-          borderColor: "var(--glass-border)",
-          backdropFilter: "blur(24px)",
-        }}
       >
         {/* ── Logo ──────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-4 pt-5 pb-4"
-          style={{ borderBottom: "1px solid var(--glass-bg)" }}
-        >
+        <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border">
           <div className="flex items-center gap-3">
-            {/* Logo ring with glow */}
-            <div className="relative w-10 h-10 flex-shrink-0">
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 opacity-20 blur-md" />
-              <div className="relative w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)" }}
-              >
-                <img src="/logo.png" alt="Logo" className="w-7 h-7 object-contain" />
+            <div className="relative w-9 h-9 flex-shrink-0">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-muted border border-border">
+                <img src="/logo.png" alt="Logo" className="w-6.5 h-6.5 object-contain" />
               </div>
             </div>
             <div>
-              <h1 className="text-sm font-bold text-white leading-tight">Kumar Ice</h1>
+              <h1 className="text-sm font-bold text-foreground leading-tight">Kumar Ice</h1>
               <p className="text-[10px] font-medium text-muted-foreground/60">
                 Business Manager
               </p>
@@ -149,7 +132,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
           <button
             onClick={closeSidebar}
-            className="lg:hidden p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-glass-bg transition-colors"
+            className="lg:hidden p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
@@ -166,44 +149,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* ── Bottom ────────────────────────────────────────── */}
-        <div className="px-2.5 pb-4 pt-3 space-y-2"
-          style={{ borderTop: "1px solid var(--glass-bg)" }}
+        <div className="px-2.5 pb-4 pt-3"
+          style={{ borderTop: "1px solid var(--glass-border)" }}
         >
-          {/* Sync status */}
-          {isOnline ? (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
-              style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.15)" }}
-            >
-              <span className="dot-online flex-shrink-0" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
-                Cloud Sync Active
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl animate-pulse"
-              style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}
-            >
-              <CloudOff className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-red-400">
-                Offline Mode
-              </span>
-            </div>
-          )}
-
           {/* User / logout */}
           <button
             onClick={handleLogout}
-            className="group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 hover:bg-red-500/8 press-effect"
-            style={{ border: "1px solid var(--glass-border)" }}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-muted border border-border"
           >
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-gradient-to-br from-violet-500 to-indigo-600 group-hover:from-red-500 group-hover:to-rose-600 transition-all duration-200">
+            <div className="w-7 h-7 rounded bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0">
               {userInitial}
             </div>
             <div className="flex-1 min-w-0 text-left">
-              <p className="text-xs font-semibold text-foreground group-hover:text-red-300 truncate transition-colors">{userName}</p>
-              <p className="text-[10px] text-muted-foreground group-hover:text-red-400 transition-colors">Sign out</p>
+              <p className="text-xs font-semibold text-foreground truncate">{userName}</p>
+              <p className="text-[10px] text-muted-foreground">Sign out</p>
             </div>
-            <LogOut className="h-3.5 w-3.5 text-muted-foreground group-hover:text-red-400 transition-colors flex-shrink-0" />
+            <LogOut className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
           </button>
         </div>
       </aside>
@@ -213,54 +174,33 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         {/* ── Top bar ───────────────────────────────────────── */}
         <header
-          className="flex items-center justify-between px-4 py-3 sticky top-0 z-30 flex-shrink-0 bg-background/85"
-          style={{
-            backdropFilter: "blur(20px)",
-            borderBottom: "1px solid var(--glass-border)",
-          }}
+          className="flex items-center justify-between px-4 py-3 sticky top-0 z-30 flex-shrink-0 bg-background/80 border-b border-border backdrop-blur-md"
         >
           {/* Left: Hamburger + Page title */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-1.5 rounded-xl text-muted-foreground hover:text-white transition-colors press-effect"
-              style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)" }}
+              className="lg:hidden p-2 rounded-lg border border-border bg-background text-muted-foreground hover:text-foreground transition-colors"
             >
-              <div className="flex items-center gap-2">
-                <img src="/logo.png" alt="Logo" className="w-6 h-6 object-contain" />
-                <Menu className="h-4 w-4" />
-              </div>
+              <Menu className="h-4 w-4" />
             </button>
 
-            <div>
-              <h2 className="text-sm font-bold text-white leading-tight">{currentPage}</h2>
-              <p className="text-[10px] text-muted-foreground hidden sm:block">{dateStr}</p>
+            <div className="flex items-center gap-2 ml-1">
+              <img src="/logo.png" alt="Logo" className="w-5 h-5 object-contain lg:hidden" />
+              <div>
+                <h2 className="text-sm font-bold text-foreground leading-tight">{currentPage}</h2>
+                <p className="text-[10px] text-muted-foreground hidden sm:block">{dateStr}</p>
+              </div>
             </div>
           </div>
 
-          {/* Right: Status chips */}
+          {/* Right: Avatar */}
           <div className="flex items-center gap-2">
-            {isOnline ? (
-              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
-                style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.15)" }}
-              >
-                <span className="dot-online" />
-                <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wide">Live</span>
-              </div>
-            ) : (
-              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
-                style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)" }}
-              >
-                <CloudOff className="h-3 w-3 text-red-400" />
-                <span className="text-[10px] font-semibold text-red-400 uppercase tracking-wide">Offline</span>
-              </div>
-            )}
-
             {/* Avatar */}
             <button
               onClick={handleLogout}
               title="Sign out"
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold transition-all duration-200 hover:scale-110 press-effect bg-gradient-to-br from-violet-500 to-indigo-600"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-primary text-xs font-bold transition-colors hover:bg-muted border border-border bg-primary/10"
             >
               {userInitial}
             </button>
@@ -286,30 +226,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
         }}
       >
         <div className="flex items-center justify-around px-1 py-1.5">
-          {NAV_ITEMS.slice(0, 4).map(({ to, icon: Icon, label, color }) => (
+          {NAV_ITEMS.slice(0, 4).map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
               end={to === "/"}
               className={({ isActive }) =>
                 cn(
-                  "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl transition-all duration-200 min-w-0 press-effect",
-                  isActive ? "text-white" : "text-muted-foreground"
+                  "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-all duration-150 min-w-0",
+                  isActive ? "text-primary" : "text-muted-foreground"
                 )
               }
             >
               {({ isActive }) => (
                 <>
                   <div className={cn(
-                    "w-9 h-7 flex items-center justify-center rounded-lg transition-all duration-200",
-                    isActive ? `bg-gradient-to-br ${color} shadow-lg` : "bg-transparent"
+                    "w-9 h-7 flex items-center justify-center rounded-md transition-all duration-150",
+                    isActive ? "bg-primary/10" : "bg-transparent"
                   )}>
-                    <Icon className={cn("h-[18px] w-[18px]", isActive ? "text-white" : "text-muted-foreground")} />
+                    <Icon className="h-[18px] w-[18px]" />
                   </div>
-                  <span className={cn(
-                    "text-[9px] font-semibold truncate transition-colors",
-                    isActive ? "text-white" : "text-muted-foreground"
-                  )}>
+                  <span className="text-[9px] font-semibold truncate">
                     {label}
                   </span>
                 </>
@@ -320,9 +257,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {/* More button */}
           <button
             onClick={() => setSidebarOpen(true)}
-            className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl text-muted-foreground press-effect"
+            className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg text-muted-foreground transition-colors hover:text-foreground"
           >
-            <div className="w-9 h-7 flex items-center justify-center rounded-lg">
+            <div className="w-9 h-7 flex items-center justify-center rounded-md">
               <Menu className="h-[18px] w-[18px]" />
             </div>
             <span className="text-[9px] font-semibold">More</span>

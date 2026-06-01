@@ -33,65 +33,47 @@ const DailyStaffCard = memo(function DailyStaffCard({
   selectedDate: string;
   onSet: (staffId: string, date: string, s: AttendanceStatus | "clear") => void;
 }) {
-  const cfg = status ? STATUS_CONFIG[status] : null;
   return (
-    <Card className="overflow-hidden glass-card">
-      <CardContent className="p-4">
-        {/* Staff info row */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${generateAvatarColor(staff.name)} flex items-center justify-center text-white font-bold shrink-0 shadow-inner text-sm`}>
-            {getInitials(staff.name)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-foreground truncate">{staff.name}</p>
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">{staff.role || "Staff"}</p>
-          </div>
-          {cfg ? (
-            <Badge variant="outline" className={cn("border-0 text-[10px] uppercase font-bold tracking-widest px-3 py-1 shrink-0", cfg.bg, cfg.text)}>
-              {cfg.label}
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="text-[10px] uppercase font-bold tracking-widest px-3 py-1 shrink-0 text-muted-foreground border-glass-border">
-              Not marked
-            </Badge>
-          )}
+    <div className="flex items-center justify-between p-3 bg-card border rounded-lg">
+      <div className="flex items-center gap-3 overflow-hidden">
+        <div className={`w-8 h-8 rounded flex items-center justify-center text-white font-bold shrink-0 text-[10px] ${generateAvatarColor(staff.name)}`}>
+          {getInitials(staff.name)}
         </div>
+        <span className="font-medium text-sm truncate">{staff.name}</span>
+      </div>
 
-        {/* Status buttons — large touch targets (min 48px tall) */}
-        <div className="grid grid-cols-4 gap-2">
-          {STATUS_ENTRIES.map(([key, c]) => {
-            const isActive = status === key;
-            return (
-              <button
-                key={key}
-                onClick={() => onSet(staff.id!, selectedDate, key)}
-                className={cn(
-                  "h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95 select-none touch-manipulation border",
-                  isActive
-                    ? `${c.bg} ${c.text} border-transparent shadow-[0_0_15px_rgba(255,255,255,0.1)] scale-105`
-                    : "bg-glass-bg text-muted-foreground border-glass-border hover:bg-glass-bg"
-                )}
-              >
-                <span className="text-lg font-bold leading-none">{c.short}</span>
-              </button>
-            );
-          })}
-          {/* Clear button */}
-          <button
-            onClick={() => onSet(staff.id!, selectedDate, "clear")}
-            disabled={!status}
-            className={cn(
-              "h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95 touch-manipulation border",
-              status
-                ? "bg-glass-bg text-muted-foreground border-glass-border hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30"
-                : "opacity-30 pointer-events-none bg-black/20 border-glass-border"
-            )}
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      </CardContent>
-    </Card>
+      <div className="flex items-center gap-1 shrink-0">
+        {STATUS_ENTRIES.map(([key, c]) => {
+          const isActive = status === key;
+          return (
+            <button
+              key={key}
+              onClick={() => onSet(staff.id!, selectedDate, key)}
+              className={cn(
+                "h-8 w-8 rounded flex items-center justify-center text-xs font-bold border transition-colors",
+                isActive
+                  ? `${c.bg} ${c.text} border-transparent`
+                  : "bg-muted/50 text-muted-foreground border-border"
+              )}
+            >
+              {c.short}
+            </button>
+          );
+        })}
+        <button
+          onClick={() => onSet(staff.id!, selectedDate, "clear")}
+          disabled={!status}
+          className={cn(
+            "h-8 w-8 rounded flex items-center justify-center border transition-colors",
+            status
+              ? "bg-muted/50 text-muted-foreground border-border hover:bg-red-500/10"
+              : "opacity-30 pointer-events-none bg-muted border-border"
+          )}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
   );
 });
 
@@ -255,56 +237,56 @@ export function AttendanceManagement() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => navigateDay(-1)}
-              className="h-11 w-11 shrink-0 flex items-center justify-center rounded-xl border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95"
+              className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95"
               aria-label="Previous day"
             >
-              <ChevronLeft className="h-5 w-5" />
+              <ChevronLeft className="h-4 w-4" />
             </button>
             <div className="flex-1 relative">
               <input
                 type="date"
                 value={selectedDate}
                 onChange={e => setSelectedDate(e.target.value)}
-                className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring opacity-0 absolute inset-0 cursor-pointer"
+                className="w-full h-9 rounded-lg border border-input bg-background px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring opacity-0 absolute inset-0 cursor-pointer"
               />
-              <div className="h-11 rounded-xl border border-input bg-background px-4 flex items-center justify-center pointer-events-none">
-                <span className="text-sm font-semibold text-foreground">{selectedDayLabel}</span>
+              <div className="h-9 rounded-lg border border-input bg-background px-4 flex items-center justify-center pointer-events-none">
+                <span className="text-xs font-semibold text-foreground">{selectedDayLabel}</span>
               </div>
             </div>
             <button
               onClick={() => navigateDay(1)}
-              className="h-11 w-11 shrink-0 flex items-center justify-center rounded-xl border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95"
+              className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95"
               aria-label="Next day"
             >
-              <ChevronRight className="h-5 w-5" />
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
         ) : (
           <div className="flex items-center gap-2">
             <button
               onClick={() => navigateMonth(-1)}
-              className="h-11 w-11 shrink-0 flex items-center justify-center rounded-xl border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95"
+              className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95"
               aria-label="Previous month"
             >
-              <ChevronLeft className="h-5 w-5" />
+              <ChevronLeft className="h-4 w-4" />
             </button>
             <div className="flex-1 relative">
               <input
                 type="month"
                 value={month}
                 onChange={e => { setMonth(e.target.value); setSelectedDate(`${e.target.value}-01`); }}
-                className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring opacity-0 absolute inset-0 cursor-pointer"
+                className="w-full h-9 rounded-lg border border-input bg-background px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring opacity-0 absolute inset-0 cursor-pointer"
               />
-              <div className="h-11 rounded-xl border border-input bg-background px-4 flex items-center justify-center pointer-events-none">
-                <span className="text-sm font-semibold text-foreground">{monthLabel}</span>
+              <div className="h-9 rounded-lg border border-input bg-background px-4 flex items-center justify-center pointer-events-none">
+                <span className="text-xs font-semibold text-foreground">{monthLabel}</span>
               </div>
             </div>
             <button
               onClick={() => navigateMonth(1)}
-              className="h-11 w-11 shrink-0 flex items-center justify-center rounded-xl border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95"
+              className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95"
               aria-label="Next month"
             >
-              <ChevronRight className="h-5 w-5" />
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
         )}
@@ -340,57 +322,57 @@ export function AttendanceManagement() {
               
               <div className="md:hidden space-y-4">
                 {/* Employee Selection Dropdown */}
-                <div className="relative z-20">
+                <div className="relative">
                   <select
                     value={selectedStaffId}
                     onChange={(e) => setSelectedStaffId(e.target.value)}
-                    className="w-full h-14 pl-4 pr-10 rounded-2xl border-2 border-transparent bg-muted/50 text-foreground font-semibold text-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary transition-all appearance-none cursor-pointer hover:bg-muted/80 shadow-sm"
+                    className="w-full h-10 pl-3 pr-10 rounded-lg border border-border bg-background text-foreground font-semibold text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors appearance-none cursor-pointer hover:bg-muted/50 shadow-sm"
                   >
                     <option value="" disabled>Select Employee</option>
                     {staff.map(s => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   </select>
-                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none" />
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 </div>
 
                 {/* Calendar Card */}
                 {selectedStaffId && (
-                  <Card className="overflow-hidden glass-card rounded-3xl">
-                    <CardContent className="p-5 sm:p-6">
+                  <Card className="overflow-hidden rounded-xl border">
+                    <CardContent className="p-4">
                       {/* Header: Month & Year */}
-                      <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-xl font-bold text-foreground">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-sm font-bold text-foreground">
                           {format(parseISO(`${month}-01`), "MMMM yyyy")}
                         </h2>
-                        <div className="flex gap-2">
+                        <div className="flex gap-1.5">
                           <button
                             onClick={() => navigateMonth(-1)}
-                            className="h-10 w-10 shrink-0 flex items-center justify-center rounded-full bg-glass-bg border border-glass-border hover:bg-glass-bg transition-colors touch-manipulation active:scale-95 shadow-sm text-foreground"
+                            className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-muted text-foreground transition-colors"
                           >
-                            <ChevronLeft className="h-5 w-5" />
+                            <ChevronLeft className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => navigateMonth(1)}
-                            className="h-10 w-10 shrink-0 flex items-center justify-center rounded-full bg-glass-bg border border-glass-border hover:bg-glass-bg transition-colors touch-manipulation active:scale-95 shadow-sm text-foreground"
+                            className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-muted text-foreground transition-colors"
                           >
-                            <ChevronRight className="h-5 w-5" />
+                            <ChevronRight className="h-4 w-4" />
                           </button>
                         </div>
                       </div>
 
                       {/* Calendar Grid */}
-                      <div className="grid grid-cols-7 gap-y-4 gap-x-2">
+                      <div className="grid grid-cols-7 gap-y-2 gap-x-1.5 justify-items-center">
                         {/* Weekday Headers */}
                         {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
-                          <div key={day} className="text-center text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                          <div key={day} className="text-center text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                             {day}
                           </div>
                         ))}
 
                         {/* Blank cells for start of month */}
                         {Array.from({ length: getDay(parseISO(`${month}-01`)) }).map((_, i) => (
-                          <div key={`empty-${i}`} className="h-10 sm:h-12 w-full" />
+                          <div key={`empty-${i}`} className="h-9 w-9" />
                         ))}
 
                         {/* Date Cells */}
@@ -405,20 +387,15 @@ export function AttendanceManagement() {
                               <button
                                 onClick={() => handleCellClick(selectedStaffId, date, status)}
                                 className={cn(
-                                  "relative z-10 flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full transition-all active:scale-90 touch-manipulation select-none",
+                                  "relative z-10 flex items-center justify-center w-9 h-9 rounded-lg transition-colors touch-manipulation select-none border text-xs font-semibold",
                                   cfg
-                                    ? `${cfg.bg} ${cfg.text} shadow-[0_0_15px_var(--glass-bg)] border border-transparent`
+                                    ? `${cfg.bg} ${cfg.text} border-transparent`
                                     : isToday
-                                      ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.3)] font-bold"
-                                      : "bg-transparent text-foreground hover:bg-glass-bg border border-transparent"
+                                      ? "bg-primary/10 text-primary border-primary/35 font-bold"
+                                      : "bg-transparent text-muted-foreground border-transparent hover:bg-muted"
                                 )}
                               >
-                                <span className={cn(
-                                  "text-sm sm:text-base font-semibold",
-                                  !cfg && !isToday && "text-muted-foreground"
-                                )}>
-                                  {dayNum}
-                                </span>
+                                <span>{dayNum}</span>
                               </button>
                             </div>
                           );
@@ -436,9 +413,9 @@ export function AttendanceManagement() {
                       let count = 0;
                       Object.values(st).forEach(v => { if (v === key) count++; });
                       return (
-                        <div key={key} className={cn("p-4 rounded-2xl flex flex-col items-center justify-center gap-1.5 border shadow-[0_0_15px_rgba(255,255,255,0.02)]", cfg.bg, cfg.bg.replace('/20', '/30').replace('bg-', 'border-'))}>
-                          <span className={cn("text-2xl font-bold leading-none", cfg.text)}>{count}</span>
-                          <span className={cn("text-[10px] font-bold uppercase tracking-widest", cfg.text, "opacity-80")}>{cfg.short}</span>
+                        <div key={key} className={cn("p-3 rounded-lg flex flex-col items-center justify-center gap-1 border border-border shadow-sm", cfg.bg, cfg.text)}>
+                          <span className="text-xl font-bold leading-none">{count}</span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider opacity-85">{cfg.short}</span>
                         </div>
                       );
                     })}
@@ -447,39 +424,39 @@ export function AttendanceManagement() {
               </div>
 
               {/* Desktop: full table */}
-              <Card className="hidden md:block overflow-hidden glass-card">
+              <Card className="hidden md:block overflow-hidden">
                 <div className="overflow-x-auto">
-                  <div className="p-4 border-b border-glass-border flex justify-between items-center">
+                  <div className="p-4 border-b border-border flex justify-between items-center">
                     <h3 className="font-semibold text-foreground">Attendance Grid</h3>
                     <div className="flex gap-2">
-                      <button onClick={() => navigateMonth(-1)} className="h-8 w-8 flex items-center justify-center rounded-lg bg-glass-bg border border-glass-border hover:bg-glass-bg text-foreground"><ChevronLeft className="h-4 w-4" /></button>
-                      <span className="px-4 py-1.5 font-bold text-sm bg-glass-bg rounded-lg border border-glass-border text-foreground">{format(parseISO(`${month}-01`), "MMMM yyyy")}</span>
-                      <button onClick={() => navigateMonth(1)} className="h-8 w-8 flex items-center justify-center rounded-lg bg-glass-bg border border-glass-border hover:bg-glass-bg text-foreground"><ChevronRight className="h-4 w-4" /></button>
+                      <button onClick={() => navigateMonth(-1)} className="h-8 w-8 flex items-center justify-center rounded-lg bg-background border border-border hover:bg-muted text-foreground"><ChevronLeft className="h-4 w-4" /></button>
+                      <span className="px-4 py-1.5 font-bold text-sm bg-background rounded-lg border border-border text-foreground">{format(parseISO(`${month}-01`), "MMMM yyyy")}</span>
+                      <button onClick={() => navigateMonth(1)} className="h-8 w-8 flex items-center justify-center rounded-lg bg-background border border-border hover:bg-muted text-foreground"><ChevronRight className="h-4 w-4" /></button>
                     </div>
                   </div>
                   <table className="w-full text-sm text-left border-collapse" style={{ minWidth: `${120 + daysInMonth * 34 + 160}px` }}>
                     <thead>
-                      <tr className="border-b border-glass-border">
-                        <th className="px-4 py-3 font-bold text-muted-foreground text-xs uppercase tracking-widest whitespace-nowrap sticky left-0 z-10 bg-[#0F1322] border-r border-glass-border shadow-[5px_0_15px_rgba(0,0,0,0.5)]">
+                      <tr className="border-b border-border">
+                        <th className="px-4 py-3 font-bold text-muted-foreground text-xs uppercase tracking-wider whitespace-nowrap sticky left-0 z-10 bg-card border-r border-border shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
                           Staff Name
                         </th>
                         {days.map((date, i) => {
                           const isToday = date === new Date().toISOString().split("T")[0];
                           return (
                             <th key={date} className={cn(
-                              "px-1.5 py-3 font-bold text-center min-w-[32px] border-l border-glass-border text-xs",
-                              isToday ? "text-indigo-400 bg-indigo-500/10" : "text-muted-foreground"
+                              "px-1.5 py-3 font-bold text-center min-w-[32px] border-l border-border text-xs",
+                              isToday ? "text-primary bg-primary/10" : "text-muted-foreground"
                             )}>
                               {i + 1}
                             </th>
                           );
                         })}
-                        <th className="px-3 py-3 font-bold text-xs uppercase tracking-widest text-center text-emerald-500 border-l border-glass-border bg-emerald-500/10 min-w-[36px]">P</th>
-                        <th className="px-3 py-3 font-bold text-xs uppercase tracking-widest text-center text-red-500 bg-red-500/10 min-w-[36px]">A</th>
-                        <th className="px-3 py-3 font-bold text-xs uppercase tracking-widest text-center text-amber-500 bg-amber-500/10 min-w-[36px]">H</th>
+                        <th className="px-3 py-3 font-bold text-xs uppercase tracking-wider text-center text-emerald-500 border-l border-border bg-emerald-500/10 min-w-[36px]">P</th>
+                        <th className="px-3 py-3 font-bold text-xs uppercase tracking-wider text-center text-red-500 bg-red-500/10 min-w-[36px]">A</th>
+                        <th className="px-3 py-3 font-bold text-xs uppercase tracking-wider text-center text-amber-500 bg-amber-500/10 min-w-[36px]">H</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/5">
+                    <tbody className="divide-y divide-border">
                       {staff.map(s => {
                         const staffAtt = attendanceMap[s.id!] || {};
                         let p = 0, a = 0, h = 0;
@@ -490,10 +467,10 @@ export function AttendanceManagement() {
                           else if (st === "half_day") h++;
                         });
                         return (
-                          <tr key={s.id} className="hover:bg-glass-bg transition-colors group">
-                            <td className="px-4 py-2 whitespace-nowrap sticky left-0 z-10 bg-[#0F1322] border-r border-glass-border group-hover:bg-[#13182B] shadow-[5px_0_15px_rgba(0,0,0,0.5)] transition-colors">
+                          <tr key={s.id} className="hover:bg-muted/30 transition-colors group">
+                            <td className="px-4 py-2 whitespace-nowrap sticky left-0 z-10 bg-card border-r border-border group-hover:bg-muted/50 transition-colors shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
                               <div className="flex items-center gap-3">
-                                <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${generateAvatarColor(s.name)} flex items-center justify-center text-white text-[10px] font-bold shrink-0 shadow-lg`}>
+                                <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${generateAvatarColor(s.name)} flex items-center justify-center text-white text-[10px] font-bold shrink-0 shadow-sm`}>
                                   {getInitials(s.name)}
                                 </div>
                                 <span className="font-semibold text-foreground">{s.name}</span>
@@ -503,12 +480,14 @@ export function AttendanceManagement() {
                               const status = staffAtt[date];
                               const cfg = status ? STATUS_CONFIG[status] : null;
                               return (
-                                <td key={date} className="px-[2px] py-1 border-l border-glass-border">
+                                <td key={date} className="px-[2px] py-1 border-l border-border">
                                   <button
                                     onClick={() => handleCellClick(s.id!, date, status)}
                                     className={cn(
-                                      "w-full h-8 flex items-center justify-center rounded-lg text-xs font-bold transition-all cursor-pointer select-none",
-                                      cfg ? `${cfg.bg} ${cfg.text} hover:opacity-80 shadow-[0_0_10px_rgba(255,255,255,0.02)]` : "bg-transparent text-muted-foreground hover:bg-glass-bg hover:text-muted-foreground"
+                                      "w-full h-7 flex items-center justify-center rounded text-xs font-bold transition-colors cursor-pointer select-none border",
+                                      cfg 
+                                        ? `${cfg.bg} ${cfg.text} border-transparent hover:bg-opacity-80` 
+                                        : "bg-transparent text-muted-foreground/45 border-transparent hover:bg-muted hover:text-foreground"
                                     )}
                                   >
                                     {cfg ? cfg.short : "·"}
@@ -516,9 +495,9 @@ export function AttendanceManagement() {
                                 </td>
                               );
                             })}
-                            <td className="px-3 py-2 text-center font-bold text-emerald-400 border-l border-glass-border bg-emerald-500/5">{p}</td>
-                            <td className="px-3 py-2 text-center font-bold text-red-400 bg-red-500/5">{a}</td>
-                            <td className="px-3 py-2 text-center font-bold text-amber-400 bg-amber-500/5">{h}</td>
+                            <td className="px-3 py-2 text-center font-bold text-emerald-400 border-l border-border bg-emerald-500/5">{p}</td>
+                            <td className="px-3 py-2 text-center font-bold text-red-400 border-l border-border bg-red-500/5">{a}</td>
+                            <td className="px-3 py-2 text-center font-bold text-amber-400 border-l border-border bg-amber-500/5">{h}</td>
                           </tr>
                         );
                       })}

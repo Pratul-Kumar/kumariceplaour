@@ -26,10 +26,12 @@ export function StaffProfile() {
   const navigate = useNavigate();
   const [staff, setStaff] = useState<Staff | null>(null);
   const [salaryHistory, setSalaryHistory] = useState<SalaryRecord[]>([]);
+  const [paymentsHistory, setPaymentsHistory] = useState<SalaryPayment[]>([]);
   const [ledgerHistory, setLedgerHistory] = useState<LedgerEntry[]>([]);
   const [currentMonthAtt, setCurrentMonthAtt] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"salary" | "attendance" | "advance">("salary");
+  const [tab, setTab] = useState<"overview" | "salary" | "ledger" | "attendance">("salary");
+  const [attendanceMonth, setAttendanceMonth] = useState(getCurrentMonth());
 
   const [currentMonthRecord, setCurrentMonthRecord] = useState<SalaryRecord | null>(null);
 
@@ -63,6 +65,12 @@ export function StaffProfile() {
   const [genRecoveryOption, setGenRecoveryOption] = useState<"full" | "partial" | "skip">("full");
   const [genRecoveryAmount, setGenRecoveryAmount] = useState("0");
   const [genNote, setGenNote] = useState("");
+  
+  // Pay Custom Salary / Full Salary form states
+  const [genPayOption, setGenPayOption] = useState<"full" | "custom" | "later">("full");
+  const [genPayAmount, setGenPayAmount] = useState("");
+  const [genPayMethod, setGenPayMethod] = useState<"cash" | "upi" | "bank" | "other">("cash");
+  const [genPayDate, setGenPayDate] = useState(new Date().toISOString().split("T")[0]);
 
   // Salary Record payment modal states
   const [payAmount, setPayAmount] = useState("");
@@ -70,6 +78,8 @@ export function StaffProfile() {
   const [payDate, setPayDate] = useState(new Date().toISOString().split("T")[0]);
   const [payNote, setPayNote] = useState("");
   const [selectedRecordToPay, setSelectedRecordToPay] = useState<SalaryRecord | null>(null);
+
+  const [existingRecord, setExistingRecord] = useState<SalaryRecord | null>(null);
 
   // Live salary preview states
   const [previewCalc, setPreviewCalc] = useState<ReturnType<typeof calculateSalary> | null>(null);
@@ -79,13 +89,13 @@ export function StaffProfile() {
   const [previewIsCapped, setPreviewIsCapped] = useState(false);
   const [attRecordsCount, setAttRecordsCount] = useState<Attendance[]>([]);
 
+  const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
   const timelineRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!id) return;
     const staffId = id;
-    const currentMonth = new Date().toISOString().slice(0, 7);
     const currentYear = new Date().getFullYear();
     const currentMonthNum = new Date().getMonth() + 1;
     let active = true;
@@ -94,14 +104,8 @@ export function StaffProfile() {
     const unsubStaff = staffService.subscribeById(staffId, (s) => {
       if (active) {
         setStaff(s);
+        // s.note tracking removed
         setLoading(false);
-      }
-    });
-
-    // Real-time subscription for attendance this month
-    const unsubAtt = attendanceService.subscribeByMonth(currentMonth, (attData) => {
-      if (active) {
-        setCurrentMonthAtt(attData.filter(a => a.staffId === staffId));
       }
     });
 
@@ -121,14 +125,38 @@ export function StaffProfile() {
       }
     });
 
+    // Real-time subscription for payments history
+    const unsubPayments = salaryService.subscribePaymentsByStaff(staffId, (payments) => {
+      if (active) {
+        setPaymentsHistory(payments);
+      }
+    });
+
     return () => {
       active = false;
       unsubStaff();
-      unsubAtt();
       unsubLedger();
       unsubSalary();
+      unsubPayments();
     };
   }, [id]);
+
+  // Real-time subscription for attendance of the selected month
+  useEffect(() => {
+    if (!id) return;
+    let active = true;
+
+    const unsubAtt = attendanceService.subscribeByMonth(attendanceMonth, (attData) => {
+      if (active) {
+        setCurrentMonthAtt(attData.filter(a => a.staffId === id));
+      }
+    });
+
+    return () => {
+      active = false;
+      unsubAtt();
+    };
+  }, [id, attendanceMonth]);
 
   // Debounced Live Preview logic for Payroll modal
   useEffect(() => {
@@ -142,13 +170,54 @@ export function StaffProfile() {
         const month = Number(moStr);
         const daysInMonth = new Date(year, month, 0).getDate();
         
-        const [attRecords, lastUnpaid] = await Promise.all([
+        const [attRecords, lastUnpaid, existing] = await Promise.all([
           attendanceService.getByStaffAndMonth(staff.id!, genMonth),
-          salaryService.getLastUnpaidRecord(staff.id!, year, month)
+          salaryService.getLastUnpaidRecord(staff.id!, year, month),
+          salaryService.getExistingRecord(staff.id!, month, year),
         ]);
         
         if (!active) return;
         
+        if (existing) {
+          const remainingAmount = existing.remainingDue;
+          if (active) {
+            setExistingRecord(existing);
+            setPreviewCalc({
+              presentDays: 0,
+              absentDays: 0,
+              leaveDays: 0,
+              halfDays: 0,
+              totalOvertimeHours: 0,
+              deductedLeaves: 0,
+              leaveDeductionAmount: 0,
+              overtimeAmount: 0,
+              finalSalary: remainingAmount,
+              remainingDue: remainingAmount,
+              breakdown: [
+                `Original Salary: ${formatCurrency(existing.finalSalary + (existing.previousDue || 0))}`,
+                `Already Paid: ${formatCurrency(existing.totalPaid)}`,
+                `Remaining Due: ${formatCurrency(remainingAmount)}`,
+              ],
+            });
+            setPreviewDue(0);
+            setPreviewActualDeduct(0);
+            setPreviewRollover(0);
+            setPreviewIsCapped(false);
+            setAttRecordsCount([]);
+            
+            if (genPayOption === "full") {
+              setGenPayAmount(String(remainingAmount));
+            } else if (genPayOption === "later") {
+              setGenPayAmount("0");
+            }
+          }
+          return;
+        }
+
+        if (active) {
+          setExistingRecord(null);
+        }
+
         const prevDue = lastUnpaid?.remainingDue || 0;
         const outstandingBalance = staff.outstandingBalance || 0;
         
@@ -185,21 +254,31 @@ export function StaffProfile() {
           extraDeduction: Number(genExtra) || 0,
         });
 
-        setPreviewCalc(result);
-        setPreviewDue(prevDue);
-        setPreviewActualDeduct(actualDeductedAdvance);
-        setPreviewRollover(rolloverAmount);
-        setPreviewIsCapped(isCapped);
-        setAttRecordsCount(attRecords);
+        const totalPayable = result.finalSalary + prevDue;
+
+        if (active) {
+          setPreviewCalc(result);
+          setPreviewDue(prevDue);
+          setPreviewActualDeduct(actualDeductedAdvance);
+          setPreviewRollover(rolloverAmount);
+          setPreviewIsCapped(isCapped);
+          setAttRecordsCount(attRecords);
+          
+          if (genPayOption === "full") {
+            setGenPayAmount(String(totalPayable));
+          } else if (genPayOption === "later") {
+            setGenPayAmount("0");
+          }
+        }
       } catch (e) {
         console.error("Preview calculation failed", e);
-        setPreviewCalc(null);
+        if (active) setPreviewCalc(null);
       }
     };
     
     run();
     return () => { active = false; };
-  }, [isPayrollModalOpen, genMonth, genBonus, genExtra, genRecoveryOption, genRecoveryAmount, staff]);
+  }, [isPayrollModalOpen, genMonth, genBonus, genExtra, genRecoveryOption, genRecoveryAmount, genPayOption, staff]);
 
   if (loading) return (
     <div className="space-y-4 pb-20 lg:pb-6">
@@ -210,9 +289,10 @@ export function StaffProfile() {
 
   if (!staff) return <div className="text-center py-20 text-muted-foreground">Staff not found</div>;
 
-  const presentDays = currentMonthAtt.filter((a) => a.status === "present").length;
-  const absentDays = currentMonthAtt.filter((a) => a.status === "absent").length;
-  const halfDays = currentMonthAtt.filter((a) => a.status === "half_day").length;
+  const sortedAtt = [...currentMonthAtt].sort((a, b) => a.date.localeCompare(b.date));
+  const presentDays = sortedAtt.filter((a) => a.status === "present").length;
+  const absentDays = sortedAtt.filter((a) => a.status === "absent").length;
+  const halfDays = sortedAtt.filter((a) => a.status === "half_day").length;
   const totalDays = presentDays + absentDays + halfDays;
   const attendanceRate = totalDays > 0 ? Math.round(((presentDays + halfDays * 0.5) / totalDays) * 100) : 0;
 
@@ -269,6 +349,10 @@ export function StaffProfile() {
       setGenExtra("0");
       setGenRecoveryOption("full");
       setGenRecoveryAmount("0");
+      setGenPayOption("full");
+      setGenPayAmount("");
+      setGenPayMethod("cash");
+      setGenPayDate(new Date().toISOString().split("T")[0]);
       setGenNote("");
       setIsPayrollModalOpen(true);
     } else {
@@ -295,7 +379,36 @@ export function StaffProfile() {
 
       const existing = await salaryService.getExistingRecord(staff.id!, month, year);
       if (existing) {
-        throw new Error(`Salary for ${staff.name} in ${formatMonth(genMonth)} already exists.`);
+        const totalPayable = existing.remainingDue;
+        const paymentAmount = genPayOption === "later" ? 0 : (genPayOption === "full" ? totalPayable : (Number(genPayAmount) || 0));
+
+        if (paymentAmount < 0 || paymentAmount > totalPayable) {
+          throw new Error(`Payment amount must be between ₹0 and ${formatCurrency(totalPayable)}`);
+        }
+
+        if (paymentAmount > 0) {
+          await salaryService.addPayment({
+            salaryRecordId: existing.id!,
+            staffId: staff.id!,
+            amountPaid: paymentAmount,
+            paymentDate: genPayDate,
+            paymentMethod: genPayMethod,
+            note: genNote || "Paid upon update",
+          });
+          toast({
+            type: "success",
+            title: "Payment Recorded",
+            description: `Recorded payment of ${formatCurrency(paymentAmount)} for ${formatMonth(genMonth)}`
+          });
+        } else {
+          toast({
+            type: "success",
+            title: "No Payment Recorded",
+            description: "No changes made."
+          });
+        }
+        setIsPayrollModalOpen(false);
+        return;
       }
 
       const daysInMonth = new Date(year, month, 0).getDate();
@@ -325,6 +438,15 @@ export function StaffProfile() {
         extraDeduction: Number(genExtra) || 0,
       });
 
+      const totalPayable = calc.finalSalary + previousDue;
+      const paymentAmount = genPayOption === "later" ? 0 : (genPayOption === "full" ? totalPayable : (Number(genPayAmount) || 0));
+
+      if (paymentAmount < 0 || paymentAmount > totalPayable) {
+        throw new Error(`Payment amount must be between ₹0 and ${formatCurrency(totalPayable)}`);
+      }
+
+      const status = paymentAmount >= totalPayable ? "paid" : paymentAmount > 0 ? "partial" : "pending";
+
       const now = new Date().toISOString();
       const pendingAdvances = await advanceService.getPendingByStaff(staff.id!);
 
@@ -341,12 +463,17 @@ export function StaffProfile() {
         grossSalary: calc.finalSalary + previewActualDeduct,
         finalSalary: calc.finalSalary,
         previousDue,
-        totalPaid: 0,
-        remainingDue: calc.finalSalary + previousDue,
-        status: "pending",
+        totalPaid: paymentAmount,
+        remainingDue: Math.max(0, totalPayable - paymentAmount),
+        status,
         note: genNote,
         updatedAt: now,
-      } as any, pendingAdvances);
+      } as any, pendingAdvances, paymentAmount > 0 ? {
+        amountPaid: paymentAmount,
+        paymentDate: genPayDate,
+        paymentMethod: genPayMethod,
+        note: genNote || "Paid upon generation"
+      } : undefined);
 
       toast({
         type: "success",
@@ -477,7 +604,7 @@ export function StaffProfile() {
     }
   };
 
-  const handleDownloadSlip = async (record: SalaryRecord) => {
+  const handleDownloadSlip = async (record: SalaryRecord, selectedPaymentId?: string) => {
     try {
       const recordPayments = await salaryService.getPaymentsForRecord(record.id!);
       const monthStr = `${record.year}-${String(record.month).padStart(2, "0")}`;
@@ -489,7 +616,7 @@ export function StaffProfile() {
         else if (att.status === "half_day") h++;
       });
       const { generateSalarySlip } = await import("@/services/pdf/generateSalarySlip");
-      generateSalarySlip(staff, record, recordPayments, { workingDays: w, presentDays: p, absentDays: a, leaveDays: 0, halfDays: h });
+      generateSalarySlip(staff, record, recordPayments, { workingDays: w, presentDays: p, absentDays: a, leaveDays: 0, halfDays: h }, selectedPaymentId);
     } catch {
       toast({ type: "error", title: "Could not generate slip", description: "Please try again." });
     }
@@ -521,11 +648,13 @@ export function StaffProfile() {
   };
 
   const handleViewLedger = () => {
-    setTab("advance");
+    setTab("ledger");
     setTimeout(() => {
       timelineRef.current?.scrollIntoView({ behavior: "smooth" });
     }, 100);
   };
+
+
 
   return (
     <div className="space-y-5 pb-20 lg:pb-6">
@@ -534,67 +663,79 @@ export function StaffProfile() {
       </button>
 
       {/* SECTION 1 — EMPLOYEE HEADER */}
-      <Card className="glass-card">
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <div className="flex items-start gap-4">
-              <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${generateAvatarColor(staff.name)} flex items-center justify-center text-white text-xl font-bold shadow-lg shrink-0`}>
+      <Card className="rounded-xl border shadow-sm">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${generateAvatarColor(staff.name)} flex items-center justify-center text-white text-base font-bold shrink-0`}>
                 {getInitials(staff.name)}
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-xl font-bold text-white truncate">{staff.name}</h1>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <h1 className="text-lg font-bold text-foreground truncate">{staff.name}</h1>
                   <Badge variant={staff.status === "active" ? "success" : "secondary"}>{staff.status}</Badge>
-                  <Badge variant="secondary" className="capitalize">{staff.salaryType}</Badge>
+                  <Badge variant="secondary" className="capitalize text-[10px]">{staff.salaryType}</Badge>
                 </div>
-                <p className="text-muted-foreground text-xs capitalize mt-1 font-semibold">{staff.role}</p>
-                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 shrink-0" />{staff.phone}</p>
-                <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 shrink-0" />Joined: {staff.joiningDate ? formatDate(staff.joiningDate) : "N/A"} ({calculateTenure(staff.joiningDate)})</p>
+                <p className="text-muted-foreground text-xs capitalize mt-0.5 font-semibold">{staff.role}</p>
+                <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1.5"><Phone className="h-3 w-3 shrink-0" />{staff.phone}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1.5"><Calendar className="h-3 w-3 shrink-0" />Joined: {staff.joiningDate ? formatDate(staff.joiningDate) : "N/A"} ({calculateTenure(staff.joiningDate)})</p>
               </div>
             </div>
 
             {/* Attendance & Stats summary in header */}
-            <div className="flex gap-4 self-stretch md:self-auto justify-between md:justify-end border-t md:border-t-0 pt-4 md:pt-0 border-glass-border">
+            <div className="flex gap-4 self-stretch md:self-auto justify-between md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-border">
               <div className="text-left md:text-right">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Attendance %</p>
-                <p className="text-xl font-extrabold text-white mt-0.5">{attendanceRate}%</p>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Attendance %</p>
+                <p className="text-lg font-bold text-foreground mt-0.5">{attendanceRate}%</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">{presentDays}d present this month</p>
               </div>
             </div>
           </div>
 
           {/* Quick Badges Info */}
-          <div className="grid grid-cols-3 gap-3 mt-6 border-t border-glass-border pt-5">
-            <div className="bg-glass-bg rounded-xl p-3 text-center border border-glass-border">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Wage</p>
-              <p className="text-sm font-extrabold text-foreground mt-1 truncate">
-                {staff.salaryType === "monthly" ? formatCurrency(staff.monthlySalary) : formatCurrency(staff.dailyWage)}
-              </p>
-              <span className="text-[10px] text-muted-foreground font-semibold">{staff.salaryType === "monthly" ? "/month" : "/day"}</span>
-            </div>
-            <div className="bg-glass-bg rounded-xl p-3 text-center border border-glass-border">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Outstanding Advance</p>
-              <p className="text-sm font-extrabold text-amber-500 mt-1 truncate">{formatCurrency(outstanding)}</p>
-              <span className="text-[10px] text-muted-foreground font-semibold">Ledger Dues</span>
-            </div>
-            <div className="bg-glass-bg rounded-xl p-3 text-center border border-glass-border">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Current Month Status</p>
-              <div className="mt-1">
-                <Badge variant={statusBadgeVariant} className="text-[10px] font-bold uppercase tracking-wider">
-                  {statusBadgeLabel}
-                </Badge>
+          {(() => {
+            const pendingSalaryDue = salaryHistory.reduce((sum, r) => sum + (r.remainingDue || 0), 0);
+            return (
+              <div className="grid grid-cols-3 gap-2.5 mt-5 border-t border-border pt-4">
+                <div className="bg-muted/40 rounded-lg p-2.5 text-center border border-border">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                    {staff.salaryType === "monthly" ? "Monthly Salary" : "Daily Wage"}
+                  </p>
+                  <p className="text-sm font-bold text-foreground mt-1 truncate">
+                    {staff.salaryType === "monthly" ? formatCurrency(staff.monthlySalary) : formatCurrency(staff.dailyWage)}
+                  </p>
+                  <span className="text-[10px] text-muted-foreground font-semibold">{staff.salaryType === "monthly" ? "/month" : "/day"}</span>
+                </div>
+                <div className="bg-muted/40 rounded-lg p-2.5 text-center border border-border">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Outstanding Advance</p>
+                  <p className="text-sm font-bold text-amber-500 mt-1 truncate">{formatCurrency(outstanding)}</p>
+                  <span className="text-[10px] text-muted-foreground font-semibold">Ledger Dues</span>
+                </div>
+                <div className="bg-muted/40 rounded-lg p-2.5 text-center border border-border">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Pending Salary Due</p>
+                  {pendingSalaryDue > 0 ? (
+                    <>
+                      <p className="text-sm font-bold text-rose-500 mt-1 truncate">{formatCurrency(pendingSalaryDue)}</p>
+                      <span className="text-[10px] text-rose-500 font-semibold uppercase tracking-wider">Pending</span>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs font-bold text-emerald-500 mt-2 truncate">No Pending Salary</p>
+                      <span className="text-[10px] text-emerald-500 font-semibold uppercase tracking-wider">All Settled</span>
+                    </>
+                  )}
+                </div>
               </div>
-              <span className="text-[10px] text-muted-foreground font-semibold">{formatMonth(getCurrentMonth())}</span>
-            </div>
-          </div>
+            );
+          })()}
 
           {/* REQUIRED ACTION BUTTONS */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 mt-5 pt-1">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-5 pt-1">
             <Button
               onClick={handleActionPaySalary}
-              className="h-10 text-xs font-bold gap-1.5 shadow-md shadow-indigo-500/10"
+              className="h-9 text-xs font-semibold gap-1.5"
             >
-              {currentMonthRecord ? <HandCoins className="h-4 w-4" /> : <Coins className="h-4 w-4" />}
+              {currentMonthRecord ? <HandCoins className="h-3.5 w-3.5" /> : <Coins className="h-3.5 w-3.5" />}
               {currentMonthRecord ? "Pay Payout" : "Pay Salary"}
             </Button>
             <Button
@@ -603,9 +744,9 @@ export function StaffProfile() {
                 setIsAdvanceModalOpen(true);
               }}
               variant="outline"
-              className="h-10 text-xs font-bold bg-rose-500/5 hover:bg-rose-500/15 border-rose-500/20 text-rose-400 gap-1.5"
+              className="h-9 text-xs font-semibold bg-rose-500/5 hover:bg-rose-500/10 border-rose-500/20 text-rose-500 dark:text-rose-400 gap-1.5"
             >
-              <TrendingUp className="h-4 w-4" />
+              <TrendingUp className="h-3.5 w-3.5" />
               Give Advance
             </Button>
             <Button
@@ -614,39 +755,134 @@ export function StaffProfile() {
                 setIsRepaymentModalOpen(true);
               }}
               variant="outline"
-              className="h-10 text-xs font-bold bg-emerald-500/5 hover:bg-emerald-500/15 border-emerald-500/20 text-emerald-400 gap-1.5"
+              className="h-9 text-xs font-semibold bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 gap-1.5"
             >
-              <TrendingDown className="h-4 w-4" />
+              <TrendingDown className="h-3.5 w-3.5" />
               Repayment
             </Button>
             <Button
               onClick={handleDownloadCurrentSlip}
               variant="outline"
-              className="h-10 text-xs font-bold gap-1.5"
+              className="h-9 text-xs font-semibold gap-1.5"
             >
-              <FileText className="h-4 w-4" />
+              <FileText className="h-3.5 w-3.5" />
               Generate Slip
             </Button>
             <Button
               onClick={handleViewLedger}
               variant="outline"
-              className="h-10 text-xs font-bold col-span-2 sm:col-span-1 gap-1.5"
+              className="h-9 text-xs font-semibold col-span-2 sm:col-span-1 gap-1.5"
             >
-              <History className="h-4 w-4" />
+              <History className="h-3.5 w-3.5" />
               View Ledger
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap rounded-xl bg-muted p-1 gap-1">
-        {(["salary", "attendance", "advance"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`flex-1 min-w-[100px] py-2.5 text-xs font-bold rounded-lg capitalize transition-all ${tab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
-            {t === "salary" ? "💰 Salary Workspace" : t === "attendance" ? "📋 Attendance Summary" : "💸 Advance & Ledger"}
+      <div className="flex flex-wrap rounded-lg bg-muted p-1 gap-1 border border-border">
+        {(["salary", "ledger", "attendance", "overview"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`flex-1 min-w-[80px] py-1.5 text-xs font-semibold rounded capitalize transition-colors ${
+              tab === t
+                ? "bg-background text-foreground shadow-sm border border-border"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
+            }`}
+          >
+            {t === "overview" && "👤 Overview"}
+            {t === "salary" && "💰 Salary"}
+            {t === "ledger" && "💸 Ledger"}
+            {t === "attendance" && "📋 Attendance"}
           </button>
         ))}
       </div>
+
+      {/* SECTION 1 — OVERVIEW */}
+      {tab === "overview" && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in duration-200">
+          {/* Column 1: Details */}
+          <Card className="md:col-span-2">
+            <CardHeader className="border-b border-border">
+              <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
+                👤 Professional Profile
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-5 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Full Name</span>
+                  <p className="text-sm font-bold text-foreground">{staff.name}</p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Role / Designation</span>
+                  <p className="text-sm font-bold text-foreground capitalize">{staff.role}</p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Phone Number</span>
+                  <p className="text-sm font-bold text-foreground">{staff.phone}</p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Employment Status</span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className={`h-2 w-2 rounded-full ${staff.status === "active" ? "bg-emerald-500" : "bg-zinc-500"}`} />
+                    <p className="text-sm font-bold text-foreground capitalize">{staff.status}</p>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Salary Configuration</span>
+                  <p className="text-sm font-bold text-foreground capitalize">{staff.salaryType} ({staff.salaryType === "monthly" ? `${formatCurrency(staff.monthlySalary)}/mo` : `${formatCurrency(staff.dailyWage)}/day`})</p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Date Joined</span>
+                  <p className="text-sm font-bold text-foreground">
+                    {staff.joiningDate ? formatDate(staff.joiningDate) : "N/A"} ({calculateTenure(staff.joiningDate)})
+                  </p>
+                </div>
+                <div className="col-span-1 sm:col-span-2 space-y-1 border-t border-border/50 pt-3">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Residential Address</span>
+                  <p className="text-sm text-foreground leading-relaxed">{staff.address || "No address provided."}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Column 2: Quick Cards / Status Summary */}
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">Attendance Performance</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-extrabold text-foreground">{attendanceRate}%</span>
+                  <span className="text-xs text-muted-foreground">attendance</span>
+                </div>
+                <div className="h-1.5 w-full bg-muted rounded-full mt-3 overflow-hidden">
+                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${attendanceRate}%` }} />
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2">Based on attendance records for {formatMonth(attendanceMonth)}.</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">Outstanding Ledger Balance</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-extrabold text-amber-500">{formatCurrency(outstanding)}</span>
+                </div>
+                <div className="h-1.5 w-full bg-muted rounded-full mt-3 overflow-hidden">
+                  <div className="h-full bg-amber-500 rounded-full" style={{ width: `${progressPct}%` }} />
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2">{progressPct.toFixed(0)}% of total advances cleared.</p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
 
       {/* SECTION 2 — SALARY WORKSPACE */}
       {tab === "salary" && (
@@ -708,7 +944,7 @@ export function StaffProfile() {
                     </div>
                     {currentMonthRecord.status !== "paid" && (
                       <div className="flex justify-end pt-1">
-                        <Button size="sm" onClick={handleActionPaySalary} className="h-8 text-xs font-bold gap-1">
+                        <Button size="sm" onClick={handleActionPaySalary} className="h-9 px-4 text-xs font-semibold gap-1">
                           <HandCoins className="h-3.5 w-3.5" /> Record Payment
                         </Button>
                       </div>
@@ -718,7 +954,7 @@ export function StaffProfile() {
               ) : (
                 <div className="p-8 text-center text-muted-foreground space-y-3">
                   <p className="text-sm">No payroll record processed for {formatMonth(getCurrentMonth())} yet.</p>
-                  <Button onClick={handleActionPaySalary} className="gap-2 mx-auto text-xs font-bold">
+                  <Button onClick={handleActionPaySalary} className="gap-2 mx-auto text-xs font-semibold h-9 px-4">
                     <Coins className="h-4 w-4" /> Process & Pay Salary
                   </Button>
                 </div>
@@ -731,7 +967,7 @@ export function StaffProfile() {
             <CardHeader className="pb-3 border-b border-glass-border">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <History className="h-4 w-4 text-primary" />
-                Historical Salary Payslips
+                Historical Salary Payslips & Transactions
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -739,36 +975,145 @@ export function StaffProfile() {
                 <p className="text-center text-muted-foreground py-10 text-xs">No salary payments on record yet.</p>
               ) : (
                 <div className="divide-y divide-glass-border">
-                  {salaryHistory.map((s) => (
-                    <div key={s.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-5 py-4 hover:bg-glass-bg/30 transition-colors">
-                      <div>
-                        <p className="text-sm font-bold text-foreground">{formatMonth(`${s.year}-${s.month.toString().padStart(2, "0")}`)}</p>
-                        <div className="flex items-center gap-2 flex-wrap mt-1 text-[11px] text-muted-foreground">
-                          <span>Base: {formatCurrency(s.baseSalary)}</span>
-                          {s.bonus > 0 && <span>• Bonus: {formatCurrency(s.bonus)}</span>}
-                          {s.overtime > 0 && <span>• OT: {formatCurrency(s.overtime)}</span>}
-                          {s.advance > 0 && <span>• Advance Rec: {formatCurrency(s.advance)}</span>}
-                          {s.extraDeduction > 0 && <span>• Extra Ded: {formatCurrency(s.extraDeduction)}</span>}
+                  {salaryHistory.map((s) => {
+                    const recordPayments = paymentsHistory.filter((p) => p.salaryRecordId === s.id);
+                    const sortedPayments = [...recordPayments].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+                    const totalPayable = s.finalSalary + (s.previousDue || 0);
+                    const isExpanded = expandedMonths[s.id!] ?? false;
+                    const monthLabel = formatMonth(`${s.year}-${s.month.toString().padStart(2, "0")}`);
+
+                    return (
+                      <div key={s.id} className="transition-colors border-b border-glass-border/30 last:border-b-0">
+                        {/* Header Row */}
+                        <div 
+                          onClick={() => setExpandedMonths(prev => ({ ...prev, [s.id!]: !isExpanded }))}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-5 py-4 cursor-pointer hover:bg-glass-bg/10 select-none transition-all"
+                        >
+                          <div>
+                            <p className="text-sm font-bold text-foreground flex items-center gap-2">
+                              <span>{monthLabel}</span>
+                              <span className="text-[10px] text-muted-foreground font-semibold">
+                                ({formatCurrency(s.totalPaid)} / {formatCurrency(totalPayable)} Paid)
+                              </span>
+                            </p>
+                            <div className="flex items-center gap-2 flex-wrap mt-1 text-[11px] text-muted-foreground">
+                              <span>Base: {formatCurrency(s.baseSalary)}</span>
+                              {s.bonus > 0 && <span>• Bonus: {formatCurrency(s.bonus)}</span>}
+                              {s.overtime > 0 && <span>• OT: {formatCurrency(s.overtime)}</span>}
+                              {s.advance > 0 && <span>• Advance Rec: {formatCurrency(s.advance)}</span>}
+                              {s.extraDeduction > 0 && <span>• Extra Ded: {formatCurrency(s.extraDeduction)}</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between sm:justify-end gap-3">
+                            <div className="text-left sm:text-right shrink-0">
+                              <p className="text-sm font-black text-white">
+                                {s.remainingDue > 0 ? `${formatCurrency(s.remainingDue)} Due` : "Fully Settled"}
+                              </p>
+                              <Badge 
+                                variant={s.status === "paid" ? "success" : s.status === "partial" ? "warning" : "destructive"} 
+                                className="text-[9px] uppercase font-bold tracking-wider mt-0.5 scale-95"
+                              >
+                                {s.status}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDownloadSlip(s);
+                                }}
+                                className="h-8 px-2.5 text-[10px] font-bold gap-1 bg-glass-bg border-glass-border hover:bg-glass-bg/60 text-white"
+                              >
+                                <Download className="h-3 w-3" />
+                                Summary
+                              </Button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteId(s.id!);
+                                }} 
+                                className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                              <span className={`text-muted-foreground text-xs ml-1 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}>
+                                ▼
+                              </span>
+                            </div>
+                          </div>
                         </div>
+
+                        {/* Collapsible Payments Timeline */}
+                        {isExpanded && (
+                          <div className="px-6 pb-5 pt-3 bg-[#0d1117]/30 border-t border-glass-border/10 space-y-3">
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                              Payment Transactions Timeline
+                            </p>
+                            {sortedPayments.length === 0 ? (
+                              <p className="text-xs text-muted-foreground italic pl-3">No payments recorded for this period yet.</p>
+                            ) : (
+                              <div className="relative border-l border-glass-border/30 ml-2 pl-4 space-y-4 pt-1">
+                                {sortedPayments.map((p, idx) => {
+                                  const paidUpToThis = sortedPayments.slice(0, idx + 1).reduce((sum, pay) => sum + pay.amountPaid, 0);
+                                  const remAfterThis = Math.max(0, totalPayable - paidUpToThis);
+                                  const isFullyPaidAtThisStep = remAfterThis <= 0;
+                                  
+                                  return (
+                                    <div key={p.id} className="relative flex items-center justify-between gap-4 group">
+                                      {/* Timeline Connector Dot */}
+                                      <div className={`absolute -left-[22px] w-[8px] h-[8px] rounded-full border ${
+                                        isFullyPaidAtThisStep 
+                                          ? "bg-emerald-500 border-emerald-500" 
+                                          : "bg-amber-500 border-amber-500"
+                                      }`} />
+
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="text-xs font-bold text-foreground">
+                                            Payment #{idx + 1}
+                                          </span>
+                                          <Badge 
+                                            variant={isFullyPaidAtThisStep ? "success" : "warning"} 
+                                            className="text-[8px] uppercase tracking-widest scale-90"
+                                          >
+                                            {isFullyPaidAtThisStep ? "Paid" : "Partial"}
+                                          </Badge>
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground flex-wrap">
+                                          <span className="font-semibold text-white">Paid: {formatCurrency(p.amountPaid)}</span>
+                                          <span>•</span>
+                                          <span>Date: {formatDate(p.paymentDate)}</span>
+                                          {p.note && (
+                                            <>
+                                              <span>•</span>
+                                              <span className="italic">"{p.note}"</span>
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-2">
+                                        <Button 
+                                          size="sm" 
+                                          variant="outline" 
+                                          onClick={() => handleDownloadSlip(s, p.id)} 
+                                          className="h-8 px-2.5 text-[10px] font-bold gap-1 bg-glass-bg border-glass-border hover:bg-glass-bg/60 text-white"
+                                        >
+                                          <Download className="h-3 w-3" /> Slip #{idx + 1}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <div className="flex items-center justify-between sm:justify-end gap-3">
-                        <div className="text-left sm:text-right shrink-0">
-                          <p className="text-sm font-black text-white">{formatCurrency(s.finalSalary)}</p>
-                          <Badge variant={s.status === "paid" ? "success" : s.status === "partial" ? "warning" : "destructive"} className="text-[10px] uppercase font-bold tracking-widest scale-90 -translate-x-1 sm:translate-x-0 mt-0.5">
-                            {s.status}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Button size="sm" variant="outline" onClick={() => handleDownloadSlip(s)} className="h-8 px-2 text-xs gap-1">
-                            <Download className="h-3.5 w-3.5" /> Slip
-                          </Button>
-                          <button onClick={() => setDeleteId(s.id!)} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -776,11 +1121,221 @@ export function StaffProfile() {
         </div>
       )}
 
-      {/* SECTION 5 — ATTENDANCE SUMMARY */}
+      {/* SECTION 3 — LEDGER / ADVANCE WORKSPACE */}
+      {tab === "ledger" && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          {/* Summary Grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Advances</p>
+                <p className="text-xl font-bold text-foreground">{formatCurrency(totalAdvances)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-[10px] font-bold text-emerald-500/70 uppercase tracking-wider mb-1">Recovered (Salary)</p>
+                <p className="text-xl font-bold text-emerald-500 dark:text-emerald-400">{formatCurrency(totalRecovered)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-[10px] font-bold text-teal-500/70 uppercase tracking-wider mb-1">Repayments (Cash)</p>
+                <p className="text-xl font-bold text-teal-500 dark:text-teal-400">{formatCurrency(totalRepayments)}</p>
+              </CardContent>
+            </Card>
+            <Card className="border-amber-500/35">
+              <CardContent className="p-4">
+                <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider mb-1">Outstanding Balance</p>
+                <p className="text-xl font-bold text-amber-500 dark:text-amber-400">{formatCurrency(outstanding)}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Progress & Actions */}
+          <Card>
+            <CardContent className="p-4 space-y-4">
+              <div>
+                <div className="flex justify-between items-center text-xs font-semibold text-muted-foreground mb-1.5">
+                  <span>Settlement Progress</span>
+                  <span>{progressPct.toFixed(0)}% Settled</span>
+                </div>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button
+                  onClick={() => {
+                    setAdvDate(new Date().toISOString().split("T")[0]);
+                    setIsAdvanceModalOpen(true);
+                  }}
+                  className="flex-1 min-w-[120px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 dark:text-rose-400 border border-rose-500/20 h-9 text-xs font-semibold gap-1.5"
+                >
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  Give Advance
+                </Button>
+                <Button
+                  onClick={() => {
+                    setRepDate(new Date().toISOString().split("T")[0]);
+                    setIsRepaymentModalOpen(true);
+                  }}
+                  className="flex-1 min-w-[120px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 h-9 text-xs font-semibold gap-1.5"
+                >
+                  <TrendingDown className="h-3.5 w-3.5" />
+                  Record Repayment
+                </Button>
+                <Button
+                  onClick={() => {
+                    setAdjDate(new Date().toISOString().split("T")[0]);
+                    setAdjType("add");
+                    setIsAdjustmentModalOpen(true);
+                  }}
+                  className="flex-1 min-w-[120px] bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 dark:text-indigo-400 border border-indigo-500/20 h-9 text-xs font-semibold gap-1.5"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Adjust Balance
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Ledger Timeline */}
+          <Card ref={timelineRef}>
+            <CardHeader className="pb-2 border-b border-border">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <History className="h-4 w-4 text-primary" />
+                Financial Ledger Timeline
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-5">
+              {ledgerHistory.length === 0 ? (
+                <div className="text-center py-10">
+                  <p className="text-xs text-muted-foreground">No transaction entries found in ledger.</p>
+                </div>
+              ) : (
+                <div className="space-y-3 relative before:absolute before:left-[13px] before:top-2 before:bottom-2 before:w-0.5 before:bg-border">
+                  {ledgerHistory.map((entry) => {
+                    let icon = <Coins className="h-3.5 w-3.5 text-muted-foreground" />;
+                    let iconBg = "bg-muted/10 border-border";
+                    let title = "Transaction";
+                    let amountText = formatCurrency(entry.amount);
+                    let amountColor = "text-foreground";
+                    
+                    if (entry.type === "salary_advance") {
+                       icon = <TrendingUp className="h-3.5 w-3.5 text-rose-500 dark:text-rose-400" />;
+                       iconBg = "bg-rose-500/10 border-rose-500/20";
+                       title = "Salary Advance Given";
+                       amountText = `+${formatCurrency(entry.amount)}`;
+                       amountColor = "text-rose-500 dark:text-rose-400 font-bold";
+                    } else if (entry.type === "salary_recovery") {
+                       icon = <TrendingDown className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400" />;
+                       iconBg = "bg-emerald-500/10 border-emerald-500/20";
+                       title = "Auto-Recovered in Salary";
+                       amountText = `-${formatCurrency(entry.amount)}`;
+                       amountColor = "text-emerald-500 dark:text-emerald-400 font-bold";
+                    } else if (entry.type === "manual_repayment") {
+                       icon = <TrendingDown className="h-3.5 w-3.5 text-teal-500 dark:text-teal-400" />;
+                       iconBg = "bg-teal-500/10 border-teal-500/20";
+                       title = "Manual Repayment Received";
+                       amountText = `-${formatCurrency(entry.amount)}`;
+                       amountColor = "text-teal-500 dark:text-teal-400 font-bold";
+                    } else if (entry.type === "manual_adjustment") {
+                       icon = <RefreshCw className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />;
+                       iconBg = "bg-indigo-500/10 border-indigo-500/20";
+                       title = "Manual Ledger Adjustment";
+                       amountText = entry.amount > 0 ? `+${formatCurrency(entry.amount)}` : `-${formatCurrency(Math.abs(entry.amount))}`;
+                       amountColor = entry.amount > 0 ? "text-rose-500 dark:text-rose-400 font-bold" : "text-emerald-500 dark:text-emerald-400 font-bold";
+                    } else if (entry.type === "salary_generated") {
+                       icon = <Coins className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />;
+                       iconBg = "bg-blue-500/10 border-blue-500/20";
+                       title = "Salary Generated (Payout)";
+                       amountText = formatCurrency(entry.amount);
+                       amountColor = "text-blue-500 dark:text-blue-400 font-bold";
+                    } else if (entry.type === "salary_paid") {
+                       icon = <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400" />;
+                       iconBg = "bg-emerald-500/10 border-emerald-500/20";
+                       title = "Salary Payout Paid";
+                       amountText = formatCurrency(entry.amount);
+                       amountColor = "text-emerald-500 dark:text-emerald-400 font-bold";
+                    }
+
+                    return (
+                      <div key={entry.id} className="flex items-start gap-4 relative">
+                        {/* Timeline Circle */}
+                        <div className={`w-[28px] h-[28px] rounded-full flex items-center justify-center border ${iconBg} shrink-0 z-10 bg-card`}>
+                          {icon}
+                        </div>
+                        
+                        <div className="flex-1 min-w-0 bg-card border border-border rounded-lg p-3 hover:bg-muted/30 transition-colors">
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div>
+                              <p className="text-xs font-bold text-foreground">{title}</p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5">{formatDate(entry.date)}</p>
+                            </div>
+                            <span className={`text-sm ${amountColor}`}>{amountText}</span>
+                          </div>
+                          {entry.note && (
+                            <p className="text-[11px] text-muted-foreground italic mt-1 bg-muted p-2 rounded border border-border/50">
+                              "{entry.note}"
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* SECTION 4 — ATTENDANCE SUMMARY */}
       {tab === "attendance" && (
         <Card className="glass-card animate-in fade-in duration-200">
-          <CardHeader><CardTitle className="text-sm font-bold flex items-center gap-2"><CalendarCheck className="h-4 w-4 text-emerald-400" /> Attendance Statistics</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
+          <CardHeader className="flex flex-row items-center justify-between gap-4 pb-3 border-b border-glass-border flex-wrap">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <CalendarCheck className="h-4 w-4 text-emerald-400" />
+              Attendance Statistics
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <button 
+                type="button"
+                onClick={() => {
+                  const [yr, mo] = attendanceMonth.split("-");
+                  const d = new Date(Number(yr), Number(mo) - 2, 1);
+                  setAttendanceMonth(d.toISOString().slice(0, 7));
+                }}
+                className="h-9 w-9 flex items-center justify-center rounded-lg border border-glass-border hover:bg-glass-bg text-foreground transition-colors font-bold text-xs"
+              >
+                ◀
+              </button>
+              <input
+                type="month"
+                value={attendanceMonth}
+                onChange={(e) => setAttendanceMonth(e.target.value)}
+                className="h-9 rounded-lg border border-glass-border bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-bold"
+              />
+              <button 
+                type="button"
+                onClick={() => {
+                  const [yr, mo] = attendanceMonth.split("-");
+                  const d = new Date(Number(yr), Number(mo), 1);
+                  setAttendanceMonth(d.toISOString().slice(0, 7));
+                }}
+                className="h-9 w-9 flex items-center justify-center rounded-lg border border-glass-border hover:bg-glass-bg text-foreground transition-colors font-bold text-xs"
+              >
+                ▶
+              </button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-5">
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3.5 text-center">
                 <p className="text-xs text-muted-foreground">Present</p>
@@ -798,197 +1353,28 @@ export function StaffProfile() {
 
             <div className="pt-2">
               <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3">Attendance Calendar Grid</p>
-              <div className="grid grid-cols-7 gap-1.5">
-                {currentMonthAtt.slice(0, 31).map((a) => (
-                  <div key={a.id || a.date} title={`${a.date}: ${a.status}`} className={`aspect-square rounded-xl text-xs flex items-center justify-center font-bold ${
-                    a.status === "present" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" :
-                    a.status === "absent" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
-                    a.status === "half_day" ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" :
-                    "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                  }`}>
-                    {parseInt(a.date.slice(8))}
-                  </div>
-                ))}
-              </div>
+              {sortedAtt.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8 text-xs">No attendance marked for this month.</p>
+              ) : (
+                <div className="grid grid-cols-7 gap-1.5">
+                  {sortedAtt.map((a) => (
+                    <div key={a.id || a.date} title={`${a.date}: ${a.status}`} className={`aspect-square rounded-xl text-xs flex items-center justify-center font-bold ${
+                      a.status === "present" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" :
+                      a.status === "absent" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
+                      a.status === "half_day" ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" :
+                      "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                    }`}>
+                      {parseInt(a.date.slice(8))}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* SECTION 3 — ADVANCE / RECOVERY SYSTEM & SECTION 4 TIMELINE */}
-      {tab === "advance" && (
-        <div className="space-y-5 animate-in fade-in duration-200">
-          {/* Summary Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="glass-card">
-              <CardContent className="p-4 sm:p-5">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Total Advances</p>
-                <p className="text-xl font-bold text-foreground">{formatCurrency(totalAdvances)}</p>
-              </CardContent>
-            </Card>
-            <Card className="glass-card">
-              <CardContent className="p-4 sm:p-5">
-                <p className="text-[10px] font-bold text-emerald-500/70 uppercase tracking-widest mb-1">Recovered (Salary)</p>
-                <p className="text-xl font-bold text-emerald-400">{formatCurrency(totalRecovered)}</p>
-              </CardContent>
-            </Card>
-            <Card className="glass-card">
-              <CardContent className="p-4 sm:p-5">
-                <p className="text-[10px] font-bold text-teal-500/70 uppercase tracking-widest mb-1">Repayments (Cash)</p>
-                <p className="text-xl font-bold text-teal-400">{formatCurrency(totalRepayments)}</p>
-              </CardContent>
-            </Card>
-            <Card className="glass-card border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.15)]">
-              <CardContent className="p-4 sm:p-5">
-                <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">Outstanding Balance</p>
-                <p className="text-xl font-bold text-amber-400">{formatCurrency(outstanding)}</p>
-              </CardContent>
-            </Card>
-          </div>
 
-          {/* Progress & Actions */}
-          <Card className="glass-card">
-            <CardContent className="p-5 space-y-4">
-              <div>
-                <div className="flex justify-between items-center text-xs font-semibold text-muted-foreground mb-1.5">
-                  <span>Settlement Progress</span>
-                  <span>{progressPct.toFixed(0)}% Settled</span>
-                </div>
-                <div className="h-2.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
-                    style={{ width: `${progressPct}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-2 pt-2">
-                <Button
-                  onClick={() => {
-                    setAdvDate(new Date().toISOString().split("T")[0]);
-                    setIsAdvanceModalOpen(true);
-                  }}
-                  className="flex-1 min-w-[120px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 h-9 text-xs font-bold gap-1.5"
-                >
-                  <TrendingUp className="h-3.5 w-3.5" />
-                  Give Advance
-                </Button>
-                <Button
-                  onClick={() => {
-                    setRepDate(new Date().toISOString().split("T")[0]);
-                    setIsRepaymentModalOpen(true);
-                  }}
-                  className="flex-1 min-w-[120px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 h-9 text-xs font-bold gap-1.5"
-                >
-                  <TrendingDown className="h-3.5 w-3.5" />
-                  Record Repayment
-                </Button>
-                <Button
-                  onClick={() => {
-                    setAdjDate(new Date().toISOString().split("T")[0]);
-                    setAdjType("add");
-                    setIsAdjustmentModalOpen(true);
-                  }}
-                  className="flex-1 min-w-[120px] bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 h-9 text-xs font-bold gap-1.5"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Adjust Balance
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Ledger Timeline */}
-          <Card className="glass-card" ref={timelineRef}>
-            <CardHeader className="pb-3 border-b border-glass-border">
-              <CardTitle className="text-sm font-bold flex items-center gap-2">
-                <History className="h-4 w-4 text-primary" />
-                Financial Ledger Timeline
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-5">
-              {ledgerHistory.length === 0 ? (
-                <div className="text-center py-10">
-                  <p className="text-xs text-muted-foreground">No transaction entries found in ledger.</p>
-                </div>
-              ) : (
-                <div className="space-y-4 relative before:absolute before:left-[13px] before:top-2 before:bottom-2 before:w-0.5 before:bg-glass-border">
-                  {ledgerHistory.map((entry) => {
-                    let icon = <Coins className="h-3.5 w-3.5 text-muted-foreground" />;
-                    let iconBg = "bg-muted/10 border-glass-border";
-                    let title = "Transaction";
-                    let amountText = formatCurrency(entry.amount);
-                    let amountColor = "text-foreground";
-                    
-                    if (entry.type === "salary_advance") {
-                      icon = <TrendingUp className="h-3.5 w-3.5 text-rose-400" />;
-                      iconBg = "bg-rose-500/10 border-rose-500/20";
-                      title = "Salary Advance Given";
-                      amountText = `+${formatCurrency(entry.amount)}`;
-                      amountColor = "text-rose-400 font-bold";
-                    } else if (entry.type === "salary_recovery") {
-                      icon = <TrendingDown className="h-3.5 w-3.5 text-emerald-400" />;
-                      iconBg = "bg-emerald-500/10 border-emerald-500/20";
-                      title = "Auto-Recovered in Salary";
-                      amountText = `-${formatCurrency(entry.amount)}`;
-                      amountColor = "text-emerald-400 font-bold";
-                    } else if (entry.type === "manual_repayment") {
-                      icon = <TrendingDown className="h-3.5 w-3.5 text-teal-400" />;
-                      iconBg = "bg-teal-500/10 border-teal-500/20";
-                      title = "Manual Repayment Received";
-                      amountText = `-${formatCurrency(entry.amount)}`;
-                      amountColor = "text-teal-400 font-bold";
-                    } else if (entry.type === "manual_adjustment") {
-                      icon = <RefreshCw className="h-3.5 w-3.5 text-indigo-400" />;
-                      iconBg = "bg-indigo-500/10 border-indigo-500/20";
-                      title = "Manual Ledger Adjustment";
-                      amountText = entry.amount > 0 ? `+${formatCurrency(entry.amount)}` : `-${formatCurrency(Math.abs(entry.amount))}`;
-                      amountColor = entry.amount > 0 ? "text-rose-400 font-bold" : "text-emerald-400 font-bold";
-                    } else if (entry.type === "salary_generated") {
-                      icon = <Coins className="h-3.5 w-3.5 text-blue-400" />;
-                      iconBg = "bg-blue-500/10 border-blue-500/20";
-                      title = "Salary Generated (Payout)";
-                      amountText = formatCurrency(entry.amount);
-                      amountColor = "text-blue-400 font-bold";
-                    } else if (entry.type === "salary_paid") {
-                      icon = <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />;
-                      iconBg = "bg-emerald-500/10 border-emerald-500/20";
-                      title = "Salary Payout Paid";
-                      amountText = formatCurrency(entry.amount);
-                      amountColor = "text-emerald-400 font-bold";
-                    }
-
-                    return (
-                      <div key={entry.id} className="flex items-start gap-4 relative">
-                        {/* Timeline Circle */}
-                        <div className={`w-[28px] h-[28px] rounded-full flex items-center justify-center border ${iconBg} shrink-0 z-10 bg-[#0B0F19]`}>
-                          {icon}
-                        </div>
-                        
-                        <div className="flex-1 min-w-0 bg-glass-bg border border-glass-border rounded-xl p-3 hover:bg-glass-bg/60 transition-colors">
-                          <div className="flex items-start justify-between gap-3 flex-wrap">
-                            <div>
-                              <p className="text-xs font-bold text-foreground">{title}</p>
-                              <p className="text-[10px] text-muted-foreground mt-0.5">{formatDate(entry.date)}</p>
-                            </div>
-                            <span className={`text-sm ${amountColor}`}>{amountText}</span>
-                          </div>
-                          {entry.note && (
-                            <p className="text-[11px] text-muted-foreground italic mt-1 bg-[#07090e]/40 p-2 rounded-lg border border-glass-border/30">
-                              "{entry.note}"
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
 
       {/* ── PAYROLL MODAL ── */}
       <Modal open={isPayrollModalOpen} onClose={() => setIsPayrollModalOpen(false)} title="Process Monthly Salary">
@@ -1066,6 +1452,88 @@ export function StaffProfile() {
                 )}
               </div>
             )}
+
+            {/* Payout/Payment Configuration */}
+            <div className="col-span-2 p-3.5 bg-emerald-500/5 rounded-xl border border-glass-border space-y-2.5">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Salary Payment Option</span>
+                {previewCalc && (
+                  <Badge variant="success" className="font-extrabold text-xs">
+                    Total Payable: {formatCurrency(previewCalc.finalSalary + previewDue)}
+                  </Badge>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {(["full", "custom", "later"] as const).map(option => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => {
+                      setGenPayOption(option);
+                      if (option === "full" && previewCalc) {
+                        setGenPayAmount(String(previewCalc.finalSalary + previewDue));
+                      } else if (option === "later") {
+                        setGenPayAmount("0");
+                      }
+                    }}
+                    className={`flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-all ${genPayOption === option ? "bg-emerald-500/10 border-emerald-500/50 text-emerald-400" : "bg-card border-border text-muted-foreground hover:bg-muted"}`}
+                  >
+                    <span className="text-[10px] font-bold uppercase tracking-wider">
+                      {option === "full" ? "Full Pay" : option === "custom" ? "Custom Pay" : "Pay Later"}
+                    </span>
+                    <span className="text-[9px] opacity-75 mt-0.5">
+                      {option === "full" && previewCalc ? formatCurrency(previewCalc.finalSalary + previewDue) : option === "custom" ? "Choose" : "₹0"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {genPayOption === "custom" && (
+                <div className="pt-1.5 space-y-2">
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground block mb-1">Payment Amount (₹)</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={previewCalc ? previewCalc.finalSalary + previewDue : undefined}
+                      value={genPayAmount}
+                      onChange={(e) => setGenPayAmount(e.target.value)}
+                      placeholder="Enter amount..."
+                    />
+                  </div>
+                </div>
+              )}
+
+              {genPayOption !== "later" && (
+                <div className="grid grid-cols-2 gap-2 pt-1.5">
+                  <div className="col-span-2">
+                    <label className="text-xs font-semibold text-muted-foreground block mb-1">Payment Method</label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {(["cash", "upi", "bank", "other"] as const).map(method => (
+                        <button
+                          key={method}
+                          type="button"
+                          onClick={() => setGenPayMethod(method)}
+                          className={`py-1.5 rounded-lg border text-xs font-bold text-center transition-all ${genPayMethod === method ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400" : "border-border bg-card text-muted-foreground hover:bg-muted"}`}
+                        >
+                          {method.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs font-semibold text-muted-foreground block mb-1">Payment Date</label>
+                    <Input
+                      type="date"
+                      required
+                      value={genPayDate}
+                      onChange={(e) => setGenPayDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="col-span-2">
               <label className="text-sm font-medium text-foreground block mb-1.5">Optional Remarks / Note</label>

@@ -12,42 +12,35 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = "default", size = "default", ...props }, ref) => {
     const base =
-      "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 active:scale-95 select-none";
+      "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 active:scale-95 select-none";
 
     const variants: Record<string, string> = {
       default:
-        "bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-400 hover:to-violet-500 hover:shadow-indigo-500/35",
+        "bg-primary text-primary-foreground shadow-sm hover:bg-primary/95",
       glow:
-        "bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-[0_0_20px_rgba(99,102,241,0.4)] hover:shadow-[0_0_30px_rgba(99,102,241,0.6)] hover:from-indigo-400 hover:to-violet-500",
+        "bg-primary text-primary-foreground shadow-sm hover:bg-primary/95",
       destructive:
-        "bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-lg shadow-red-500/20 hover:from-red-400 hover:to-rose-500",
+        "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
       outline:
-        "border text-foreground hover:bg-glass-bg hover:text-white hover:border-indigo-500/40 transition-colors",
+        "border border-border bg-transparent text-foreground hover:bg-muted transition-colors",
       secondary:
-        "text-foreground hover:bg-glass-bg hover:text-white",
+        "bg-secondary text-secondary-foreground hover:bg-secondary/80",
       ghost:
-        "text-muted-foreground hover:text-white hover:bg-white/6",
+        "text-muted-foreground hover:text-foreground hover:bg-muted",
       link:
-        "text-indigo-400 underline-offset-4 hover:underline hover:text-indigo-300 p-0 h-auto",
+        "text-primary underline-offset-4 hover:underline p-0 h-auto",
     };
 
     const sizes: Record<string, string> = {
-      default: "h-10 px-4 py-2 text-sm",
-      sm:      "h-8 px-3 text-xs rounded-lg",
-      lg:      "h-12 px-6 text-base",
-      icon:    "h-10 w-10",
-    };
-
-    // Inline styles for variants that need dynamic dark bg
-    const inlineStyle: Record<string, React.CSSProperties> = {
-      outline:   { background: "var(--glass-bg)", borderColor: "var(--glass-border)" },
-      secondary: { background: "var(--glass-bg)" },
+      default: "h-9 px-4 py-2 text-sm",
+      sm:      "h-8 px-3 text-xs",
+      lg:      "h-10 px-6 text-sm",
+      icon:    "h-9 w-9",
     };
 
     return (
       <button
         ref={ref}
-        style={inlineStyle[variant] ?? undefined}
         className={cn(base, variants[variant], sizes[size], className)}
         {...props}
       />
@@ -125,13 +118,7 @@ export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDi
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("rounded-2xl text-card-foreground transition-all duration-200", className)}
-      style={{
-        background: "linear-gradient(135deg, var(--glass-bg) 0%, rgba(255,255,255,0.02) 100%)",
-        border: "1px solid rgba(255,255,255,0.07)",
-        borderTopColor: "rgba(255,255,255,0.11)",
-        boxShadow: "0 4px 24px rgba(0,0,0,0.35), 0 1px 4px rgba(0,0,0,0.2)",
-      }}
+      className={cn("rounded-xl border bg-card text-card-foreground shadow-sm transition-all duration-200", className)}
       {...props}
     />
   )
@@ -140,9 +127,10 @@ Card.displayName = "Card";
 
 export const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("flex flex-col space-y-1 p-5 pb-3", className)} {...props} />
+    <div ref={ref} className={cn("flex flex-col space-y-1 p-4 pb-2", className)} {...props} />
   )
 );
+CardHeader.displayName = "CardHeader";
 CardHeader.displayName = "CardHeader";
 
 export const CardTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLHeadingElement>>(
@@ -161,14 +149,14 @@ CardDescription.displayName = "CardDescription";
 
 export const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("p-5 pt-0", className)} {...props} />
+    <div ref={ref} className={cn("p-4 pt-0", className)} {...props} />
   )
 );
 CardContent.displayName = "CardContent";
 
 export const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("flex items-center p-5 pt-0", className)} {...props} />
+    <div ref={ref} className={cn("flex items-center p-4 pt-0", className)} {...props} />
   )
 );
 CardFooter.displayName = "CardFooter";
@@ -181,18 +169,17 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export function Badge({ className, variant = "default", ...props }: BadgeProps) {
-  const styles: Record<string, React.CSSProperties> = {
-    default:     { background: "rgba(99,102,241,0.18)", color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.3)" },
-    secondary:   { background: "var(--glass-bg)", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.1)" },
-    destructive: { background: "rgba(239,68,68,0.12)",  color: "#fca5a5", border: "1px solid rgba(239,68,68,0.25)" },
-    outline:     { background: "transparent",           color: "#94a3b8", border: "1px solid rgba(255,255,255,0.12)" },
-    success:     { background: "rgba(16,185,129,0.12)", color: "#6ee7b7", border: "1px solid rgba(16,185,129,0.25)" },
-    warning:     { background: "rgba(245,158,11,0.12)", color: "#fcd34d", border: "1px solid rgba(245,158,11,0.25)" },
+  const variants: Record<string, string> = {
+    default:     "bg-primary/10 text-indigo-400 border border-primary/20",
+    secondary:   "bg-muted text-muted-foreground border border-border",
+    destructive: "bg-red-500/10 text-red-400 border border-red-500/20",
+    outline:     "text-muted-foreground border border-border",
+    success:     "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
+    warning:     "bg-amber-500/10 text-amber-400 border border-amber-500/20",
   };
   return (
     <div
-      style={styles[variant]}
-      className={cn("inline-flex items-center rounded-lg px-2.5 py-0.5 text-xs font-semibold", className)}
+      className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", variants[variant], className)}
       {...props}
     />
   );
