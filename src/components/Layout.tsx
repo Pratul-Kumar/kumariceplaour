@@ -210,7 +210,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         {/* ── Page Content ──────────────────────────────────── */}
         <main className="flex-1 overflow-y-auto flex flex-col justify-between">
-          <div className="p-4 sm:p-5 pb-24 lg:pb-6 animate-fade-in max-w-7xl mx-auto w-full flex-grow">
+          <div className="p-4 sm:p-5 pb-[100px] lg:pb-6 animate-fade-in max-w-7xl mx-auto w-full flex-grow">
             {children}
           </div>
           <PoweredByFooter className="pb-28 lg:pb-6" />
@@ -219,35 +219,39 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* ── Mobile Bottom Nav ──────────────────────────────────── */}
       <nav
-        className="fixed bottom-0 left-0 right-0 z-40 lg:hidden pb-safe"
-        style={{
-          background: "hsl(var(--background) / 0.96)",
-          backdropFilter: "blur(24px)",
-          borderTop: "1px solid var(--glass-border)",
-        }}
+        className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-background/95 backdrop-blur-xl border-t border-border shadow-[0_-4px_24px_rgba(0,0,0,0.03)]"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        <div className="flex items-center justify-around px-1 py-1.5">
-          {NAV_ITEMS.slice(0, 4).map(({ to, icon: Icon, label }) => (
+        <div className="flex items-center justify-around px-2 pt-3 pb-3 h-[76px]">
+          {[
+            { to: "/", icon: LayoutDashboard, label: "Home" },
+            { to: "/attendance", icon: ClipboardCheck, label: "Attendance" },
+            { to: "/staff", icon: Users, label: "Staff" },
+            { to: "/expenses", icon: Receipt, label: "Expense" },
+          ].map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
               end={to === "/"}
               className={({ isActive }) =>
                 cn(
-                  "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-all duration-150 min-w-0",
-                  isActive ? "text-primary" : "text-muted-foreground"
+                  "flex flex-col items-center justify-center gap-1.5 min-w-[64px] min-h-[48px] rounded-xl transition-all duration-200",
+                  isActive ? "text-primary" : "text-muted-foreground/70 hover:text-foreground"
                 )
               }
             >
               {({ isActive }) => (
                 <>
                   <div className={cn(
-                    "w-9 h-7 flex items-center justify-center rounded-md transition-all duration-150",
-                    isActive ? "bg-primary/10" : "bg-transparent"
+                    "w-14 h-8 flex items-center justify-center rounded-full transition-all duration-200",
+                    isActive ? "bg-primary/10 text-primary shadow-[0_0_12px_rgba(var(--primary),0.15)]" : "bg-transparent"
                   )}>
-                    <Icon className="h-[18px] w-[18px]" />
+                    <Icon className="h-6 w-6" strokeWidth={isActive ? 2.5 : 2.25} />
                   </div>
-                  <span className="text-[9px] font-semibold truncate">
+                  <span className={cn(
+                    "text-xs tracking-wide",
+                    isActive ? "font-bold" : "font-medium"
+                  )}>
                     {label}
                   </span>
                 </>
@@ -258,12 +262,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {/* More button */}
           <button
             onClick={() => setSidebarOpen(true)}
-            className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg text-muted-foreground transition-colors hover:text-foreground"
+            className="flex flex-col items-center justify-center gap-1.5 min-w-[64px] min-h-[48px] rounded-xl text-muted-foreground/70 hover:text-foreground transition-all duration-200"
           >
-            <div className="w-9 h-7 flex items-center justify-center rounded-md">
-              <Menu className="h-[18px] w-[18px]" />
+            <div className="w-14 h-8 flex items-center justify-center rounded-full bg-transparent">
+              <Menu className="h-6 w-6" strokeWidth={2.25} />
             </div>
-            <span className="text-[9px] font-semibold">More</span>
+            <span className="text-xs font-medium tracking-wide">More</span>
           </button>
         </div>
       </nav>

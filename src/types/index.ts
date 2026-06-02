@@ -76,6 +76,7 @@ export interface SalaryRecord {
   totalPaid: number;
   remainingDue: number;
   status: "pending" | "partial" | "paid";
+  isLocked?: boolean;
   advanceIds?: string[]; // tracks which advances were recovered in this salary
   rolloverAdvanceId?: string; // tracks any rollover advance created
   note?: string;
@@ -291,7 +292,9 @@ export type LedgerType =
   | "manual_repayment"
   | "manual_adjustment"
   | "salary_generated"
-  | "salary_paid";
+  | "salary_paid"
+  | "salary_slip_generated"
+  | "due_created";
 
 export interface LedgerEntry {
   id?: string;

@@ -7,41 +7,22 @@ import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, AdvanceRe
 
 const mapDoc = <T>(d: any): T => ({ id: d.id, ...d.data() } as T);
 
-// Date normalization helper for attendance consistency
-export function normalizeDateString(dateStr: string): string {
-  const parts = dateStr.split("-");
-  if (parts.length === 3) {
-    const y = parts[0];
-    const m = parts[1].padStart(2, "0");
-    const d = parts[2].padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  return dateStr;
-}
+export const normalizeDate = (date: string) => {
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return date;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
 
-// Find existing attendance doc checking multiple date string variations
 const getExistingAttendanceDoc = async (staffId: string, dateStr: string) => {
-  const parts = dateStr.split("-");
-  const possibleDates = [dateStr];
-  if (parts.length === 3) {
-    const y = parts[0];
-    const m = parseInt(parts[1], 10);
-    const d = parseInt(parts[2], 10);
-    possibleDates.push(`${y}-${m}-${d}`);
-    possibleDates.push(`${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
-    possibleDates.push(`${y}-${m}-${String(d).padStart(2, "0")}`);
-    possibleDates.push(`${y}-${String(m).padStart(2, "0")}-${d}`);
-  }
-  const uniqueDates = Array.from(new Set(possibleDates));
+  const normalizedDate = normalizeDate(dateStr);
   const attendanceCol = collection(db, "attendance");
-  
-  for (const dVal of uniqueDates) {
-    const q = query(attendanceCol, where("date", "==", dVal));
-    const snap = await getDocs(q);
-    const found = snap.docs.find(d => d.data().staffId === staffId);
-    if (found) return found;
-  }
-  return null;
+  const q = query(attendanceCol, where("date", "==", normalizedDate));
+  const snap = await getDocs(q);
+  const found = snap.docs.find(d => d.data().staffId === staffId);
+  return found || null;
 };
 
 // ─── TTL CACHE ────────────────────────────────────────────────────────────────
@@ -141,7 +122,7 @@ export const attendanceService = {
   },
 
   upsert: async (data: Omit<Attendance, "id" | "createdAt" | "updatedAt">) => {
-    const normalizedDate = normalizeDateString(data.date);
+    const normalizedDate = normalizeDate(data.date);
     const existing = await getExistingAttendanceDoc(data.staffId, data.date);
     const now = new Date().toISOString();
     const cleanData = { ...data, date: normalizedDate };
@@ -150,25 +131,12 @@ export const attendanceService = {
   },
 
   deleteRecord: async (staffId: string, date: string) => {
-    const parts = date.split("-");
-    const possibleDates = [date];
-    if (parts.length === 3) {
-      const y = parts[0];
-      const m = parseInt(parts[1], 10);
-      const d = parseInt(parts[2], 10);
-      possibleDates.push(`${y}-${m}-${d}`);
-      possibleDates.push(`${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
-      possibleDates.push(`${y}-${m}-${String(d).padStart(2, "0")}`);
-      possibleDates.push(`${y}-${String(m).padStart(2, "0")}-${d}`);
-    }
-    const uniqueDates = Array.from(new Set(possibleDates));
-    for (const dVal of uniqueDates) {
-      const q = query(attendanceCol, where("date", "==", dVal));
-      const snap = await getDocs(q);
-      const matched = snap.docs.filter(d => d.data().staffId === staffId);
-      for (const docObj of matched) {
-        await deleteDoc(doc(db, "attendance", docObj.id));
-      }
+    const normalizedDate = normalizeDate(date);
+    const q = query(attendanceCol, where("date", "==", normalizedDate));
+    const snap = await getDocs(q);
+    const matched = snap.docs.filter(d => d.data().staffId === staffId);
+    for (const docObj of matched) {
+      await deleteDoc(doc(db, "attendance", docObj.id));
     }
   },
 
@@ -616,7 +584,7 @@ export const salaryService = {
         const dueLedgerRef = doc(collection(db, "employee_ledger"));
         tx.set(dueLedgerRef, {
           staffId: data.staffId,
-          type: "manual_adjustment",
+          type: "due_created",
           amount: remainingDue,
           date: now.split("T")[0],
           month: `${data.year}-${String(data.month).padStart(2, "0")}`,

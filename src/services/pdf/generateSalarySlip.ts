@@ -71,6 +71,13 @@ export async function generateSalarySlip(
   doc.setTextColor(15, 23, 42);
   doc.text(staff.phone || "N/A", 38, y + 14.5);
 
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 116, 139);
+  doc.text("Role: ", 15, y + 18.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(15, 23, 42);
+  doc.text(staff.role ? staff.role.toUpperCase() : "STAFF", 38, y + 18.5);
+
   // Right Column
   doc.setFont("helvetica", "normal");
   doc.setTextColor(100, 116, 139);
@@ -116,8 +123,17 @@ export async function generateSalarySlip(
     y = y + 6;
   };
 
+  if (staff.salaryType === "monthly") {
+    addLine("Monthly Salary Rate", pdfCurrency(staff.monthlySalary));
+  } else {
+    addLine("Daily Wage Rate", pdfCurrency(staff.dailyWage));
+  }
+  
   addLine("Present Days", `${attendanceStats.presentDays} / ${attendanceStats.workingDays}`);
-  addLine("Salary Amount", pdfCurrency(record.baseSalary));
+  if (attendanceStats.halfDays > 0) addLine("Half Days", `${attendanceStats.halfDays}`);
+  if (attendanceStats.leaveDays > 0) addLine("Leave Days", `${attendanceStats.leaveDays}`);
+
+  addLine("Generated Salary", pdfCurrency(record.grossSalary || record.baseSalary));
   
   if (record.bonus > 0) {
     addLine("Bonus", `+ ${pdfCurrency(record.bonus)}`, [21, 128, 61]);

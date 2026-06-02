@@ -3,8 +3,9 @@ import { getDaysInMonth, parseISO, format, addMonths, subMonths, getDay } from "
 import { CheckCircle, XCircle, Clock, CalendarOff, Trash2, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { Card, CardContent, Skeleton, EmptyState, Badge } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
-import { staffService, attendanceService } from "@/services";
-import { type Staff, type Attendance, type AttendanceStatus } from "@/types";
+import { staffService, attendanceService, salaryService } from "@/services";
+import { normalizeDate } from "@/services/index";
+import { type Staff, type Attendance, type AttendanceStatus, type SalaryRecord } from "@/types";
 import { getCurrentMonth, getInitials, generateAvatarColor } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -17,8 +18,12 @@ const STATUS_CONFIG: Record<AttendanceStatus, { label: string; short: string; bg
 };
 
 const NEXT_STATUS: Record<string, AttendanceStatus | "clear"> = {
-  "undefined": "present", "present": "absent",
-  "absent": "half_day", "half_day": "leave", "leave": "clear",
+  "undefined": "present", 
+  "present": "absent",
+  "absent": "half_day", 
+  "half_day": "leave", 
+  "leave": "clear",
+  "clear": "present"
 };
 
 const STATUS_ENTRIES = Object.entries(STATUS_CONFIG) as [AttendanceStatus, typeof STATUS_CONFIG[AttendanceStatus]][];
@@ -27,13 +32,18 @@ const STATUS_ENTRIES = Object.entries(STATUS_CONFIG) as [AttendanceStatus, typeo
 
 /** Single staff card for Daily mobile view */
 const DailyStaffCard = memo(function DailyStaffCard({
-  staff, status, selectedDate, onSet,
+  staff, status, selectedDate, onSet, updating
 }: {
   staff: Staff;
   status: AttendanceStatus | undefined;
   selectedDate: string;
   onSet: (staffId: string, date: string, s: AttendanceStatus | "clear") => void;
+  updating: Record<string, boolean>;
 }) {
+  const key = `${staff.id}-${selectedDate}`;
+  const isUpdating = updating[key];
+  const isLocked = updating[`${staff.id}-locked`];
+
   return (
     <div className="flex items-center justify-between p-3 bg-card border rounded-lg">
       <div className="flex items-center gap-3 overflow-hidden">
@@ -43,18 +53,18 @@ const DailyStaffCard = memo(function DailyStaffCard({
         <span className="font-medium text-sm truncate">{staff.name}</span>
       </div>
 
-      <div className="flex items-center gap-1 shrink-0">
-        {STATUS_ENTRIES.map(([key, c]) => {
-          const isActive = status === key;
+      <div className={cn("flex items-center gap-1 shrink-0 transition-opacity", (isUpdating || isLocked) && "opacity-50 pointer-events-none")}>
+        {STATUS_ENTRIES.map(([keyStatus, c]) => {
+          const isActive = status === keyStatus;
           return (
             <button
-              key={key}
-              onClick={() => onSet(staff.id!, selectedDate, key)}
+              key={keyStatus}
+              onClick={() => onSet(staff.id!, selectedDate, keyStatus)}
               className={cn(
                 "h-8 w-8 rounded flex items-center justify-center text-xs font-bold border transition-colors",
                 isActive
                   ? `${c.bg} ${c.text} border-transparent`
-                  : "bg-muted/50 text-muted-foreground border-border"
+                  : "bg-muted/50 text-muted-foreground border-border hover:bg-muted"
               )}
             >
               {c.short}
@@ -67,7 +77,7 @@ const DailyStaffCard = memo(function DailyStaffCard({
           className={cn(
             "h-8 w-8 rounded flex items-center justify-center border transition-colors",
             status
-              ? "bg-muted/50 text-muted-foreground border-border hover:bg-red-500/10"
+              ? "bg-muted/50 text-muted-foreground border-border hover:bg-red-500/10 hover:text-red-500"
               : "opacity-30 pointer-events-none bg-muted border-border"
           )}
         >
@@ -78,25 +88,17 @@ const DailyStaffCard = memo(function DailyStaffCard({
   );
 });
 
-/** Monthly summary chip for a single staff */
-const SummaryChip = memo(function SummaryChip({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className={cn("flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold", color)}>
-      <span>{value}</span>
-      <span className="font-medium opacity-80">{label}</span>
-    </div>
-  );
-});
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function AttendanceManagement() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
+  const [salaries, setSalaries] = useState<SalaryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState(getCurrentMonth());
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split("T")[0]);
-  const [viewMode, setViewMode] = useState<"daily" | "employee">("employee"); // Default employee
+  const [viewMode, setViewMode] = useState<"daily" | "employee">("employee");
   const [selectedStaffId, setSelectedStaffId] = useState<string>("");
+  const [updating, setUpdating] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -105,34 +107,68 @@ export function AttendanceManagement() {
     }
   }, [staff, selectedStaffId]);
 
-  // Derive query month — viewMode is display-only, doesn't change query
   const queryMonth = useMemo(() => {
     if (viewMode === "daily") return selectedDate.substring(0, 7);
     return month;
   }, [month, selectedDate, viewMode]);
 
-  // Staff subscription — stable mount
   useEffect(() => {
     const unsub = staffService.subscribeAll(data => setStaff(data.filter(s => s.status === "active")));
     return () => unsub();
   }, []);
 
-  // Attendance subscription — re-fires only when month changes
+  // Map Deduplication Listener Merge
   useEffect(() => {
     setLoading(true);
     let active = true;
     const unsub = attendanceService.subscribeByMonth(queryMonth, data => {
-      if (active) { setAttendance(data); setLoading(false); }
+      if (active) { 
+        setAttendance(prev => {
+          const map = new Map<string, Attendance>();
+          
+          // Apply confirmed data from Firestore
+          data.forEach(a => map.set(`${a.staffId}-${a.date}`, a));
+          
+          // Re-apply in-flight temp entries over it
+          prev.forEach(a => {
+            if (a.id?.startsWith("temp-")) {
+              map.set(`${a.staffId}-${a.date}`, a);
+            }
+          });
+
+          return Array.from(map.values());
+        });
+        setLoading(false); 
+      }
     });
     return () => { active = false; unsub(); };
   }, [queryMonth]);
 
-  // Sync month picker when date changes in daily mode
+  // Salary Lock Logic
+  const [qYear, qMonth] = queryMonth.split("-");
+  const yearNum = parseInt(qYear, 10);
+  const monthNum = parseInt(qMonth, 10);
+
+  useEffect(() => {
+    let active = true;
+    const unsub = salaryService.subscribeByMonth(monthNum, yearNum, (records) => {
+      if (active) setSalaries(records);
+    });
+    return () => { active = false; unsub(); };
+  }, [monthNum, yearNum]);
+
+  const lockedStaffIds = useMemo(() => {
+    const set = new Set<string>();
+    salaries.forEach(s => {
+      if (s.status === "paid" || s.isLocked) set.add(s.staffId);
+    });
+    return set;
+  }, [salaries]);
+
   useEffect(() => {
     if (viewMode === "daily") setMonth(selectedDate.substring(0, 7));
   }, [selectedDate, viewMode]);
 
-  // Month navigation helpers
   const navigateMonth = useCallback((dir: 1 | -1) => {
     const current = parseISO(`${month}-01`);
     const next = dir === 1 ? addMonths(current, 1) : subMonths(current, 1);
@@ -148,14 +184,25 @@ export function AttendanceManagement() {
     setSelectedDate(next);
   }, [selectedDate]);
 
-  // Handlers
-  const handleCellClick = useCallback(async (staffId: string, date: string, currentStatus?: AttendanceStatus) => {
+  // Handlers with strict Date Normalization and Race Condition protection
+  const handleCellClick = useCallback(async (staffId: string, rawDate: string, currentStatus?: AttendanceStatus) => {
+    if (lockedStaffIds.has(staffId)) {
+      toast({ type: "error", title: "Locked", description: "Attendance cannot be edited after salary is finalized or paid." });
+      return;
+    }
+    
+    const date = normalizeDate(rawDate);
+    const key = `${staffId}-${date}`;
+    if (updating[key]) return; // Cell freeze
+
+    setUpdating(prev => ({ ...prev, [key]: true }));
     const nextStatus = NEXT_STATUS[String(currentStatus)] || "present";
+    const tempId = `temp-${Date.now()}`;
     
     setAttendance(prev => {
       const filtered = prev.filter(a => !(a.staffId === staffId && a.date === date));
       if (nextStatus === "clear") return filtered;
-      return [...filtered, { id: `temp-${Date.now()}`, staffId, date, status: nextStatus as AttendanceStatus, overtimeHours: 0 } as Attendance];
+      return [...filtered, { id: tempId, staffId, date, status: nextStatus as AttendanceStatus, overtimeHours: 0 } as Attendance];
     });
 
     try {
@@ -163,14 +210,31 @@ export function AttendanceManagement() {
       else await attendanceService.upsert({ staffId, date, status: nextStatus as AttendanceStatus, overtimeHours: 0 });
     } catch (err: any) {
       toast({ type: "error", title: "Sync Error", description: err.message || "Failed to update attendance." });
+    } finally {
+      setUpdating(prev => ({ ...prev, [key]: false }));
+      setAttendance(prev => prev.map(a => 
+        (a.id === tempId) ? { ...a, id: undefined } : a
+      ));
     }
-  }, [toast]);
+  }, [updating, lockedStaffIds, toast]);
 
-  const setExactStatus = useCallback(async (staffId: string, date: string, status: AttendanceStatus | "clear") => {
+  const setExactStatus = useCallback(async (staffId: string, rawDate: string, status: AttendanceStatus | "clear") => {
+    if (lockedStaffIds.has(staffId)) {
+      toast({ type: "error", title: "Locked", description: "Attendance cannot be edited after salary is finalized or paid." });
+      return;
+    }
+
+    const date = normalizeDate(rawDate);
+    const key = `${staffId}-${date}`;
+    if (updating[key]) return;
+
+    setUpdating(prev => ({ ...prev, [key]: true }));
+    const tempId = `temp-${Date.now()}`;
+
     setAttendance(prev => {
       const filtered = prev.filter(a => !(a.staffId === staffId && a.date === date));
       if (status === "clear") return filtered;
-      return [...filtered, { id: `temp-${Date.now()}`, staffId, date, status: status as AttendanceStatus, overtimeHours: 0 } as Attendance];
+      return [...filtered, { id: tempId, staffId, date, status: status as AttendanceStatus, overtimeHours: 0 } as Attendance];
     });
 
     try {
@@ -179,8 +243,13 @@ export function AttendanceManagement() {
     } catch (err: any) {
       console.error("[setExactStatus]", err);
       toast({ type: "error", title: "Sync Error", description: err.message || "Failed to update attendance." });
+    } finally {
+      setUpdating(prev => ({ ...prev, [key]: false }));
+      setAttendance(prev => prev.map(a => 
+        (a.id === tempId) ? { ...a, id: undefined } : a
+      ));
     }
-  }, [toast]);
+  }, [updating, toast]);
 
   // Computed values
   const daysInMonth = getDaysInMonth(parseISO(`${month}-01`));
@@ -196,21 +265,11 @@ export function AttendanceManagement() {
     return map;
   }, [attendance, staff]);
 
-  const monthLabel = useMemo(
-    () => format(parseISO(`${month}-01`), "MMMM yyyy"),
-    [month]
-  );
+  const monthLabel = useMemo(() => format(parseISO(`${month}-01`), "MMMM yyyy"), [month]);
+  const selectedDayLabel = useMemo(() => format(new Date(selectedDate + "T00:00:00"), "EEEE, d MMMM"), [selectedDate]);
 
-  const selectedDayLabel = useMemo(
-    () => format(new Date(selectedDate + "T00:00:00"), "EEEE, d MMMM"),
-    [selectedDate]
-  );
-
-  // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4 pb-28 lg:pb-6">
-
-      {/* ── Header ─────────────────────────────────────────────── */}
       <div>
         <h1 className="text-xl font-bold text-foreground">Attendance</h1>
         <p className="text-sm text-muted-foreground mt-0.5 hidden md:block">
@@ -218,17 +277,13 @@ export function AttendanceManagement() {
         </p>
       </div>
 
-      {/* ── View Toggle + Date Controls ─────────────────────────── */}
       <div className="flex flex-col gap-3">
-        {/* View Mode Toggle (full width on mobile) */}
         <div className="flex bg-muted p-1 rounded-xl gap-1">
           <button
             onClick={() => setViewMode("employee")}
             className={cn(
               "flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all",
-              viewMode === "employee"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground"
+              viewMode === "employee" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
             )}
           >
             Employee View
@@ -237,76 +292,34 @@ export function AttendanceManagement() {
             onClick={() => setViewMode("daily")}
             className={cn(
               "flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all",
-              viewMode === "daily"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground"
+              viewMode === "daily" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
             )}
           >
             Daily View
           </button>
         </div>
 
-        {/* Date Navigation */}
         {viewMode === "daily" ? (
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigateDay(-1)}
-              className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95"
-              aria-label="Previous day"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
+            <button onClick={() => navigateDay(-1)} className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95" aria-label="Previous day"><ChevronLeft className="h-4 w-4" /></button>
             <div className="flex-1 relative">
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={e => setSelectedDate(e.target.value)}
-                className="w-full h-9 rounded-lg border border-input bg-background px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring opacity-0 absolute inset-0 cursor-pointer"
-              />
-              <div className="h-9 rounded-lg border border-input bg-background px-4 flex items-center justify-center pointer-events-none">
-                <span className="text-xs font-semibold text-foreground">{selectedDayLabel}</span>
-              </div>
+              <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring opacity-0 absolute inset-0 cursor-pointer" />
+              <div className="h-9 rounded-lg border border-input bg-background px-4 flex items-center justify-center pointer-events-none"><span className="text-xs font-semibold text-foreground">{selectedDayLabel}</span></div>
             </div>
-            <button
-              onClick={() => navigateDay(1)}
-              className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95"
-              aria-label="Next day"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
+            <button onClick={() => navigateDay(1)} className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95" aria-label="Next day"><ChevronRight className="h-4 w-4" /></button>
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigateMonth(-1)}
-              className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95"
-              aria-label="Previous month"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
+            <button onClick={() => navigateMonth(-1)} className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95" aria-label="Previous month"><ChevronLeft className="h-4 w-4" /></button>
             <div className="flex-1 relative">
-              <input
-                type="month"
-                value={month}
-                onChange={e => { setMonth(e.target.value); setSelectedDate(`${e.target.value}-01`); }}
-                className="w-full h-9 rounded-lg border border-input bg-background px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring opacity-0 absolute inset-0 cursor-pointer"
-              />
-              <div className="h-9 rounded-lg border border-input bg-background px-4 flex items-center justify-center pointer-events-none">
-                <span className="text-xs font-semibold text-foreground">{monthLabel}</span>
-              </div>
+              <input type="month" value={month} onChange={e => { setMonth(e.target.value); setSelectedDate(`${e.target.value}-01`); }} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring opacity-0 absolute inset-0 cursor-pointer" />
+              <div className="h-9 rounded-lg border border-input bg-background px-4 flex items-center justify-center pointer-events-none"><span className="text-xs font-semibold text-foreground">{monthLabel}</span></div>
             </div>
-            <button
-              onClick={() => navigateMonth(1)}
-              className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95"
-              aria-label="Next month"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
+            <button onClick={() => navigateMonth(1)} className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-accent transition-colors touch-manipulation active:scale-95" aria-label="Next month"><ChevronRight className="h-4 w-4" /></button>
           </div>
         )}
       </div>
 
-      {/* ── Content ─────────────────────────────────────────────── */}
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-28 w-full rounded-xl" />)}
@@ -315,7 +328,6 @@ export function AttendanceManagement() {
         <EmptyState icon="👥" title="No active staff" description="Add active staff members first to mark attendance" />
       ) : (
         <>
-          {/* ──────────────── DAILY VIEW ──────────────────────────── */}
           {viewMode === "daily" && (
             <div className="flex flex-col gap-3">
               {staff.map(s => (
@@ -325,79 +337,51 @@ export function AttendanceManagement() {
                   status={attendanceMap[s.id!]?.[selectedDate]}
                   selectedDate={selectedDate}
                   onSet={setExactStatus}
+                  updating={{ ...updating, [`${s.id}-locked`]: lockedStaffIds.has(s.id!) }}
                 />
               ))}
             </div>
           )}
 
-          {/* ──────────────── EMPLOYEE VIEW ────────────────────────── */}
           {viewMode === "employee" && (
             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              
               <div className="md:hidden space-y-4">
-                {/* Employee Selection Dropdown */}
                 <div className="relative">
-                  <select
-                    value={selectedStaffId}
-                    onChange={(e) => setSelectedStaffId(e.target.value)}
-                    className="w-full h-10 pl-3 pr-10 rounded-lg border border-border bg-background text-foreground font-semibold text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors appearance-none cursor-pointer hover:bg-muted/50 shadow-sm"
-                  >
+                  <select value={selectedStaffId} onChange={(e) => setSelectedStaffId(e.target.value)} className="w-full h-10 pl-3 pr-10 rounded-lg border border-border bg-background text-foreground font-semibold text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors appearance-none cursor-pointer hover:bg-muted/50 shadow-sm">
                     <option value="" disabled>Select Employee</option>
-                    {staff.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
+                    {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 </div>
 
-                {/* Calendar Card */}
                 {selectedStaffId && (
                   <Card className="overflow-hidden rounded-xl border">
                     <CardContent className="p-4">
-                      {/* Header: Month & Year */}
                       <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-sm font-bold text-foreground">
-                          {format(parseISO(`${month}-01`), "MMMM yyyy")}
-                        </h2>
+                        <h2 className="text-sm font-bold text-foreground">{format(parseISO(`${month}-01`), "MMMM yyyy")}</h2>
                         <div className="flex gap-1.5">
-                          <button
-                            onClick={() => navigateMonth(-1)}
-                            className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-muted text-foreground transition-colors"
-                          >
-                            <ChevronLeft className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => navigateMonth(1)}
-                            className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-muted text-foreground transition-colors"
-                          >
-                            <ChevronRight className="h-4 w-4" />
-                          </button>
+                          <button onClick={() => navigateMonth(-1)} className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-muted text-foreground transition-colors"><ChevronLeft className="h-4 w-4" /></button>
+                          <button onClick={() => navigateMonth(1)} className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-background hover:bg-muted text-foreground transition-colors"><ChevronRight className="h-4 w-4" /></button>
                         </div>
                       </div>
 
-                      {/* Calendar Grid */}
                       <div className="grid grid-cols-7 gap-y-2 gap-x-1.5 justify-items-center">
-                        {/* Weekday Headers */}
                         {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
-                          <div key={day} className="text-center text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                            {day}
-                          </div>
+                          <div key={day} className="text-center text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{day}</div>
                         ))}
-
-                        {/* Blank cells for start of month */}
                         {Array.from({ length: getDay(parseISO(`${month}-01`)) }).map((_, i) => (
                           <div key={`empty-${i}`} className="h-9 w-9" />
                         ))}
-
-                        {/* Date Cells */}
                         {days.map((date) => {
                           const dayNum = parseInt(date.split("-")[2], 10);
                           const isToday = date === new Date().toISOString().split("T")[0];
                           const status = attendanceMap[selectedStaffId]?.[date];
                           const cfg = status ? STATUS_CONFIG[status] : null;
+                          const key = `${selectedStaffId}-${date}`;
+                          const isUpdating = updating[key] || lockedStaffIds.has(selectedStaffId);
 
                           return (
-                            <div key={`${selectedStaffId}-${date}`} className="flex justify-center relative">
+                            <div key={key} className={cn("flex justify-center relative transition-opacity", isUpdating && "opacity-50 pointer-events-none")}>
                               <button
                                 onClick={() => handleCellClick(selectedStaffId, date, status)}
                                 className={cn(
@@ -419,7 +403,6 @@ export function AttendanceManagement() {
                   </Card>
                 )}
 
-                {/* Employee Summary Stats */}
                 {selectedStaffId && (
                   <div className="grid grid-cols-4 gap-2">
                     {STATUS_ENTRIES.map(([key, cfg]) => {
@@ -437,7 +420,6 @@ export function AttendanceManagement() {
                 )}
               </div>
 
-              {/* Desktop: full table */}
               <Card className="hidden md:block overflow-hidden">
                 <div className="overflow-x-auto">
                   <div className="p-4 border-b border-border flex justify-between items-center">
@@ -451,57 +433,48 @@ export function AttendanceManagement() {
                   <table className="w-full text-sm text-left border-collapse" style={{ minWidth: `${120 + daysInMonth * 34 + 160}px` }}>
                     <thead>
                       <tr className="border-b border-border">
-                        <th className="px-4 py-3 font-bold text-muted-foreground text-xs uppercase tracking-wider whitespace-nowrap sticky left-0 z-10 bg-card border-r border-border shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
-                          Staff Name
-                        </th>
-                        {days.map((date, i) => {
-                          const isToday = date === new Date().toISOString().split("T")[0];
-                          return (
-                            <th key={date} className={cn(
-                              "px-1.5 py-3 font-bold text-center min-w-[32px] border-l border-border text-xs",
-                              isToday ? "text-primary bg-primary/10" : "text-muted-foreground"
-                            )}>
-                              {i + 1}
-                            </th>
-                          );
-                        })}
+                        <th className="px-4 py-3 font-bold text-muted-foreground text-xs uppercase tracking-wider whitespace-nowrap sticky left-0 z-10 bg-card border-r border-border shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Staff Name</th>
+                        {days.map((date, i) => (
+                          <th key={`head-${date}`} className={cn("px-1.5 py-3 font-bold text-center min-w-[32px] border-l border-border text-xs", date === new Date().toISOString().split("T")[0] ? "text-primary bg-primary/10" : "text-muted-foreground")}>{i + 1}</th>
+                        ))}
                         <th className="px-3 py-3 font-bold text-xs uppercase tracking-wider text-center text-emerald-500 border-l border-border bg-emerald-500/10 min-w-[36px]">P</th>
                         <th className="px-3 py-3 font-bold text-xs uppercase tracking-wider text-center text-red-500 bg-red-500/10 min-w-[36px]">A</th>
                         <th className="px-3 py-3 font-bold text-xs uppercase tracking-wider text-center text-amber-500 bg-amber-500/10 min-w-[36px]">H</th>
+                        <th className="px-3 py-3 font-bold text-xs uppercase tracking-wider text-center text-blue-500 bg-blue-500/10 min-w-[36px]">L</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                       {staff.map(s => {
                         const staffAtt = attendanceMap[s.id!] || {};
-                        let p = 0, a = 0, h = 0;
+                        let p = 0, a = 0, h = 0, l = 0;
                         days.forEach(date => {
                           const st = staffAtt[date];
                           if (st === "present") p++;
                           else if (st === "absent") a++;
                           else if (st === "half_day") h++;
+                          else if (st === "leave") l++;
                         });
                         return (
                           <tr key={s.id} className="hover:bg-muted/30 transition-colors group">
                             <td className="px-4 py-2 whitespace-nowrap sticky left-0 z-10 bg-card border-r border-border group-hover:bg-muted/50 transition-colors shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
                               <div className="flex items-center gap-3">
-                                <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${generateAvatarColor(s.name)} flex items-center justify-center text-white text-[10px] font-bold shrink-0 shadow-sm`}>
-                                  {getInitials(s.name)}
-                                </div>
+                                <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${generateAvatarColor(s.name)} flex items-center justify-center text-white text-[10px] font-bold shrink-0 shadow-sm`}>{getInitials(s.name)}</div>
                                 <span className="font-semibold text-foreground">{s.name}</span>
                               </div>
                             </td>
                             {days.map(date => {
                               const status = staffAtt[date];
                               const cfg = status ? STATUS_CONFIG[status] : null;
+                              const key = `${s.id}-${date}`;
+                              const isUpdating = updating[key] || lockedStaffIds.has(s.id!);
                               return (
-                                <td key={`${s.id}-${date}`} className="px-[2px] py-1 border-l border-border">
+                                <td key={key} className="px-[2px] py-1 border-l border-border relative">
                                   <button
                                     onClick={() => handleCellClick(s.id!, date, status)}
                                     className={cn(
-                                      "w-full h-7 flex items-center justify-center rounded text-xs font-bold transition-colors cursor-pointer select-none border",
-                                      cfg 
-                                        ? `${cfg.bg} ${cfg.text} border-transparent hover:bg-opacity-80` 
-                                        : "bg-transparent text-muted-foreground/45 border-transparent hover:bg-muted hover:text-foreground"
+                                      "w-full h-7 flex items-center justify-center rounded text-xs font-bold transition-all cursor-pointer select-none border",
+                                      isUpdating && "opacity-50 pointer-events-none",
+                                      cfg ? `${cfg.bg} ${cfg.text} border-transparent hover:bg-opacity-80` : "bg-transparent text-muted-foreground/45 border-transparent hover:bg-muted hover:text-foreground"
                                     )}
                                   >
                                     {cfg ? cfg.short : "·"}
@@ -512,6 +485,7 @@ export function AttendanceManagement() {
                             <td className="px-3 py-2 text-center font-bold text-emerald-400 border-l border-border bg-emerald-500/5">{p}</td>
                             <td className="px-3 py-2 text-center font-bold text-red-400 border-l border-border bg-red-500/5">{a}</td>
                             <td className="px-3 py-2 text-center font-bold text-amber-400 border-l border-border bg-amber-500/5">{h}</td>
+                            <td className="px-3 py-2 text-center font-bold text-blue-400 border-l border-border bg-blue-500/5">{l}</td>
                           </tr>
                         );
                       })}
@@ -524,19 +498,14 @@ export function AttendanceManagement() {
         </>
       )}
 
-      {/* ── Legend ─────────────────────────────────────────────── */}
       <div className="flex gap-3 flex-wrap items-center pt-1">
         {STATUS_ENTRIES.map(([status, cfg]) => (
           <div key={status} className="flex items-center gap-1.5">
-            <div className={cn("w-5 h-5 rounded flex items-center justify-center font-bold text-[10px]", cfg.bg, cfg.text)}>
-              {cfg.short}
-            </div>
+            <div className={cn("w-5 h-5 rounded flex items-center justify-center font-bold text-[10px]", cfg.bg, cfg.text)}>{cfg.short}</div>
             <span className="text-xs text-muted-foreground">{cfg.label}</span>
           </div>
         ))}
-        <span className="text-xs text-muted-foreground italic ml-auto hidden md:block">
-          Tap a cell to cycle · Long-press to clear
-        </span>
+        <span className="text-xs text-muted-foreground italic ml-auto hidden md:block">Tap a cell to cycle · Long-press to clear</span>
       </div>
     </div>
   );

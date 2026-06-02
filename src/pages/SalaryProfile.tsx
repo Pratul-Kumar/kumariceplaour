@@ -4,7 +4,7 @@ import { ArrowLeft, IndianRupee, HandCoins, Wallet, Clock, Calculator, History }
 import { Card, CardContent, Button, Input, Skeleton, Spinner, Badge } from '@/components/ui';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
-import { staffService, attendanceService, salaryService } from '@/services';
+import { staffService, attendanceService, salaryService, ledgerService } from '@/services';
 import { type Staff, calculateSalary, type SalaryRecord } from '@/types';
 import { formatCurrency, getCurrentMonth, formatMonth, generateAvatarColor, getInitials } from '@/lib/utils';
 import { useForm } from 'react-hook-form';
@@ -94,10 +94,9 @@ export function SalaryProfile() {
   const currentRecord = records[0]; // If there's a record for this month
   const isGenerated = !!currentRecord;
 
-  // Final Payable (Before any manual partial override)
-  // Total Salary + Bonus - Advance Salary (owed to owner)
-  // We do NOT add dueMoney here, money and salary flows are separate
-  const finalPayableCalc = Math.max(0, calculatedSalary - advanceSalary);
+  const grossPayable = calculatedSalary + dueMoney;
+  const actualDeduct = Math.min(advanceSalary, grossPayable);
+  const finalPayableCalc = grossPayable - actualDeduct;
 
   const openPaymentModal = (type: 'full' | 'partial') => {
     setPaymentType(type);
@@ -117,8 +116,7 @@ export function SalaryProfile() {
       const year = Number(yrStr);
       const month = Number(moStr);
 
-      const actualDeduct = Math.min(advanceSalary, calculatedSalary);
-      const actualPayable = calculatedSalary - actualDeduct;
+      const actualPayable = finalPayableCalc;
       const paymentAmount = paymentType === 'full' ? actualPayable : data.amount;
 
       if (paymentAmount > actualPayable) {
@@ -137,7 +135,7 @@ export function SalaryProfile() {
         overtime: 0,
         grossSalary: calculatedSalary,
         finalSalary: calculatedSalary,
-        previousDue: 0, // removed auto merging
+        previousDue: dueMoney,
         totalPaid: 0, 
         remainingDue: Math.max(0, actualPayable - paymentAmount),
         status: 'pending',
@@ -150,8 +148,28 @@ export function SalaryProfile() {
         note: data.note || 'Salary Payout'
       } : undefined);
 
-      toast({ type: 'success', title: 'Salary Processed', description: 'Salary processed and recorded successfully.' });
+      toast({ type: 'success', title: 'Salary Processed', description: 'Salary processed and recorded successfully. Generating slip...' });
       setPaymentType(null);
+      
+      // Auto-trigger PDF generation
+      setTimeout(async () => {
+        const fetchedRecords = await salaryService.getByMonth(month, year);
+        const newRecord = fetchedRecords.find((r: any) => r.staffId === staff.id);
+        if (newRecord) {
+          downloadSlip(newRecord);
+          // Log PDF generation in ledger history
+          await ledgerService.addEntry({
+            staffId: staff.id!,
+            type: "salary_slip_generated" as any,
+            amount: 0,
+            date: new Date().toISOString().split("T")[0],
+            month: `${year}-${String(month).padStart(2, "0")}`,
+            note: "Automatically generated salary slip PDF",
+            salaryRecordId: newRecord.id
+          });
+        }
+      }, 1500); // give time for firestore propagation
+
     } catch (e: any) {
       toast({ type: 'error', title: 'Error', description: e.message });
     } finally {
@@ -163,8 +181,25 @@ export function SalaryProfile() {
     try {
       const payments  = await salaryService.getPaymentsForRecord(record.id!);
       const { generateSalarySlip } = await import("@/services/pdf/generateSalarySlip");
-      generateSalarySlip(staff, record, payments, { workingDays, presentDays, absentDays: 0, leaveDays: 0, halfDays: 0 });
-    } catch {
+      const attRecords = await attendanceService.getByStaffAndMonth(staff.id!, currentMonthStr);
+      
+      let pDays = 0, aDays = 0, lDays = 0, hDays = 0;
+      attRecords.forEach(r => {
+        if (r.status === 'present') pDays++;
+        else if (r.status === 'absent') aDays++;
+        else if (r.status === 'leave') lDays++;
+        else if (r.status === 'half_day') hDays++;
+      });
+      
+      generateSalarySlip(staff, record, payments, { 
+        workingDays, 
+        presentDays: pDays, 
+        absentDays: aDays, 
+        leaveDays: lDays, 
+        halfDays: hDays 
+      });
+    } catch (err) {
+      console.error(err);
       toast({ type: "error", title: "Could not generate slip", description: "Try again." });
     }
   };
@@ -285,10 +320,16 @@ export function SalaryProfile() {
                 <span className="text-muted-foreground">Generated Salary</span>
                 <span className="font-medium text-foreground">{formatCurrency(calculatedSalary)}</span>
               </div>
-              {advanceSalary > 0 && (
+              {dueMoney > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Previous Due</span>
+                  <span className="font-medium text-emerald-500">+{formatCurrency(dueMoney)}</span>
+                </div>
+              )}
+              {actualDeduct > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Advance Deduction</span>
-                  <span className="font-medium text-rose-500">-{formatCurrency(Math.min(advanceSalary, calculatedSalary))}</span>
+                  <span className="font-medium text-rose-500">-{formatCurrency(actualDeduct)}</span>
                 </div>
               )}
               <div className="pt-3 border-t border-border flex justify-between items-center">
