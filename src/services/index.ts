@@ -530,7 +530,7 @@ export const salaryService = {
       // 1. Recover active EMPLOYEE_TO_OWNER dues chronologically
       const duesCol = collection(db, "dues");
       const q = query(duesCol, where("staffId", "==", data.staffId), where("type", "==", "EMPLOYEE_TO_OWNER"));
-      const duesSnap = await tx.get(q);
+      const duesSnap = await getDocs(q);
       const activeEmployeeDues = duesSnap.docs
         .map(d => mapDoc<DueRecord>(d))
         .filter(d => !d.isDeleted && (d.status === "active" || d.status === "partial"));
@@ -595,7 +595,7 @@ export const salaryService = {
 
       // 4. Handle remaining unpaid salary as OWNER_TO_EMPLOYEE due
       const paymentAmount = payment ? payment.amountPaid : 0;
-      const totalDue = data.finalSalary + (data.previousDue || 0);
+      const totalDue = data.finalSalary + (data.previousDue || 0) - recoveredAmount;
       const remainingDue = Math.max(0, totalDue - paymentAmount);
 
       if (remainingDue > 0) {
@@ -628,7 +628,7 @@ export const salaryService = {
       }
 
       // 5. Handle initial payment if any
-      if (paymentAmount > 0) {
+      if (paymentAmount > 0 && payment) {
         const paymentRef = doc(salaryPaymentsCol);
         tx.set(paymentRef, {
           salaryRecordId: salaryRef.id,
@@ -704,7 +704,7 @@ export const salaryService = {
           
           // Restore recovered EMPLOYEE_TO_OWNER dues
           if (recovered > 0) {
-            const employeeDuesSnap = await tx.get(query(duesCol, where("staffId", "==", record.staffId), where("type", "==", "EMPLOYEE_TO_OWNER")));
+            const employeeDuesSnap = await getDocs(query(duesCol, where("staffId", "==", record.staffId), where("type", "==", "EMPLOYEE_TO_OWNER")));
             const employeeDues = employeeDuesSnap.docs
               .map(d => mapDoc<DueRecord>(d))
               .filter(d => !d.isDeleted && d.amount > d.remainingAmount);
@@ -770,7 +770,7 @@ export const salaryService = {
       // Update linked OWNER_TO_EMPLOYEE remainingAmount
       const duesCol = collection(db, "dues");
       const q = query(duesCol, where("linkedSalaryId", "==", data.salaryRecordId), where("type", "==", "OWNER_TO_EMPLOYEE"));
-      const duesSnap = await tx.get(q);
+      const duesSnap = await getDocs(q);
       const activeLinkedDues = duesSnap.docs
         .map(d => mapDoc<DueRecord>(d))
         .filter(d => !d.isDeleted && (d.status === "active" || d.status === "partial"));
@@ -1089,7 +1089,7 @@ export const dueService = {
       const staffData = staffSnap.data() as Staff;
       const currentBal = staffData.outstandingBalance || 0;
       
-      const duesSnap = await tx.get(query(duesCol, where("staffId", "==", staffId), where("type", "==", type)));
+      const duesSnap = await getDocs(query(duesCol, where("staffId", "==", staffId), where("type", "==", type)));
       const activeDues = duesSnap.docs
         .map(d => mapDoc<DueRecord>(d))
         .filter(d => !d.isDeleted && (d.status === "active" || d.status === "partial"));

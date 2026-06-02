@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Edit2, Trash2, User, Phone, Eye } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Input, Card, CardContent, Badge, EmptyState, Spinner, Skeleton } from "@/components/ui";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
@@ -39,6 +39,8 @@ export function StaffManagement() {
   const [customRoles, setCustomRoles] = useState<string[]>([]);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const mode = searchParams.get("mode");
 
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<StaffFormData>({
     resolver: zodResolver(staffSchema),
@@ -151,10 +153,12 @@ export function StaffManagement() {
     <div className="space-y-5 pb-20 lg:pb-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Staff Management</h1>
+          <h1 className="text-xl font-bold text-foreground">
+            {mode === "salary" ? "Select Staff for Salary" : mode === "money" ? "Select Staff for Money" : "Staff Management"}
+          </h1>
           <p className="text-sm text-muted-foreground">{staff.filter((s) => s.status === "active").length} active members</p>
         </div>
-        <Button onClick={openAdd} className="gap-2"><Plus className="h-4 w-4" /> Add Staff</Button>
+        {!mode && <Button onClick={openAdd} className="gap-2"><Plus className="h-4 w-4" /> Add Staff</Button>}
       </div>
 
       {/* Filters */}
@@ -216,17 +220,23 @@ export function StaffManagement() {
                   </div>
                 </div>
 
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="flex-1 gap-1.5 h-9" onClick={() => navigate(`/staff/${s.id}`)}>
-                    <Eye className="h-3.5 w-3.5" /> View
+                {mode ? (
+                  <Button variant="default" size="sm" className="w-full h-9" onClick={() => navigate(`/${mode}/${s.id}`)}>
+                    Select
                   </Button>
-                  <Button variant="secondary" size="sm" className="flex-1 gap-1.5 h-9" onClick={() => openEdit(s)}>
-                    <Edit2 className="h-3.5 w-3.5" /> Edit
-                  </Button>
-                  <button onClick={() => setDeleteId(s.id!)} className="p-2.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" className="flex-1 gap-1.5 h-9" onClick={() => navigate(`/staff/${s.id}`)}>
+                      <Eye className="h-3.5 w-3.5" /> View
+                    </Button>
+                    <Button variant="secondary" size="sm" className="flex-1 gap-1.5 h-9" onClick={() => openEdit(s)}>
+                      <Edit2 className="h-3.5 w-3.5" /> Edit
+                    </Button>
+                    <button onClick={() => setDeleteId(s.id!)} className="p-2.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

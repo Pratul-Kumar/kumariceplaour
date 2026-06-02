@@ -457,7 +457,7 @@ export function StaffProfile() {
       const status = paymentAmount >= totalPayable ? "paid" : paymentAmount > 0 ? "partial" : "pending";
 
       const now = new Date().toISOString();
-      const pendingAdvances = await advanceService.getPendingByStaff(staff.id!);
+      const pendingAdvances: any[] = [];
 
       await salaryService.addRecord({
         staffId: staff.id!,
@@ -665,725 +665,93 @@ export function StaffProfile() {
 
 
 
+  const pendingSalaryDue = salaryHistory.reduce((sum, r) => sum + (r.remainingDue || 0), 0);
+
   return (
-    <div className="space-y-5 pb-20 lg:pb-6">
+    <div className="space-y-6 pb-20 lg:pb-6 max-w-lg mx-auto">
       <button onClick={() => navigate("/staff")} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
         <ArrowLeft className="h-4 w-4" /> Back to Staff List
       </button>
 
-      {/* SECTION 1 — EMPLOYEE HEADER */}
-      <Card className="rounded-xl border shadow-sm">
-        <CardContent className="p-4 sm:p-5">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${generateAvatarColor(staff.name)} flex items-center justify-center text-white text-base font-bold shrink-0`}>
-                {getInitials(staff.name)}
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <h1 className="text-lg font-bold text-foreground truncate">{staff.name}</h1>
-                  <Badge variant={staff.status === "active" ? "success" : "secondary"}>{staff.status}</Badge>
-                  <Badge variant="secondary" className="capitalize text-[10px]">{staff.salaryType}</Badge>
-                </div>
-                <p className="text-muted-foreground text-xs capitalize mt-0.5 font-semibold">{staff.role}</p>
-                <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1.5"><Phone className="h-3 w-3 shrink-0" />{staff.phone}</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1.5"><Calendar className="h-3 w-3 shrink-0" />Joined: {staff.joiningDate ? formatDate(staff.joiningDate) : "N/A"} ({calculateTenure(staff.joiningDate)})</p>
-              </div>
-            </div>
-
-            {/* Attendance & Stats summary in header */}
-            <div className="flex gap-4 self-stretch md:self-auto justify-between md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-border">
-              <div className="text-left md:text-right">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Attendance %</p>
-                <p className="text-lg font-bold text-foreground mt-0.5">{attendanceRate}%</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{presentDays}d present this month</p>
-              </div>
-            </div>
+      {/* Top Section */}
+      <div className="flex items-center gap-4 bg-card border border-border p-4 rounded-2xl shadow-sm mt-2">
+        <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-white text-xl font-bold shrink-0 bg-gradient-to-br ${generateAvatarColor(staff.name)}`}>
+          {getInitials(staff.name)}
+        </div>
+        <div>
+          <h1 className="text-xl font-extrabold text-foreground">{staff.name}</h1>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-sm font-semibold text-muted-foreground capitalize">{staff.role}</p>
+            <Badge variant="secondary" className="text-[10px] capitalize">{staff.salaryType}</Badge>
           </div>
-
-          {/* Quick Badges Info */}
-          {(() => {
-            const pendingSalaryDue = salaryHistory.reduce((sum, r) => sum + (r.remainingDue || 0), 0);
-            return (
-              <div className="grid grid-cols-3 gap-2.5 mt-5 border-t border-border pt-4">
-                <div className="bg-muted/40 rounded-lg p-2.5 text-center border border-border">
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                    {staff.salaryType === "monthly" ? "Monthly Salary" : "Daily Wage"}
-                  </p>
-                  <p className="text-sm font-bold text-foreground mt-1 truncate">
-                    {staff.salaryType === "monthly" ? formatCurrency(staff.monthlySalary) : formatCurrency(staff.dailyWage)}
-                  </p>
-                  <span className="text-[10px] text-muted-foreground font-semibold">{staff.salaryType === "monthly" ? "/month" : "/day"}</span>
-                </div>
-                <div className="bg-muted/40 rounded-lg p-2.5 text-center border border-border">
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Outstanding Advance</p>
-                  <p className="text-sm font-bold text-amber-500 mt-1 truncate">{formatCurrency(outstanding)}</p>
-                  <span className="text-[10px] text-muted-foreground font-semibold">Ledger Dues</span>
-                </div>
-                <div className="bg-muted/40 rounded-lg p-2.5 text-center border border-border">
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Pending Salary Due</p>
-                  {pendingSalaryDue > 0 ? (
-                    <>
-                      <p className="text-sm font-bold text-rose-500 mt-1 truncate">{formatCurrency(pendingSalaryDue)}</p>
-                      <span className="text-[10px] text-rose-500 font-semibold uppercase tracking-wider">Pending</span>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-xs font-bold text-emerald-500 mt-2 truncate">No Pending Salary</p>
-                      <span className="text-[10px] text-emerald-500 font-semibold uppercase tracking-wider">All Settled</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* REQUIRED ACTION BUTTONS */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-5 pt-1">
-            <Button
-              onClick={handleActionPaySalary}
-              className="h-9 text-xs font-semibold gap-1.5"
-            >
-              {currentMonthRecord ? <HandCoins className="h-3.5 w-3.5" /> : <Coins className="h-3.5 w-3.5" />}
-              {currentMonthRecord ? "Pay Payout" : "Pay Salary"}
-            </Button>
-            <Button
-              onClick={() => {
-                setAdvDate(new Date().toISOString().split("T")[0]);
-                setIsAdvanceModalOpen(true);
-              }}
-              variant="outline"
-              className="h-9 text-xs font-semibold bg-rose-500/5 hover:bg-rose-500/10 border-rose-500/20 text-rose-500 dark:text-rose-400 gap-1.5"
-            >
-              <TrendingUp className="h-3.5 w-3.5" />
-              Give Advance
-            </Button>
-            <Button
-              onClick={() => {
-                setRepDate(new Date().toISOString().split("T")[0]);
-                setIsRepaymentModalOpen(true);
-              }}
-              variant="outline"
-              className="h-9 text-xs font-semibold bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 gap-1.5"
-            >
-              <TrendingDown className="h-3.5 w-3.5" />
-              Repayment
-            </Button>
-            <Button
-              onClick={handleDownloadCurrentSlip}
-              variant="outline"
-              className="h-9 text-xs font-semibold gap-1.5"
-            >
-              <FileText className="h-3.5 w-3.5" />
-              Generate Slip
-            </Button>
-            <Button
-              onClick={handleViewLedger}
-              variant="outline"
-              className="h-9 text-xs font-semibold col-span-2 sm:col-span-1 gap-1.5"
-            >
-              <History className="h-3.5 w-3.5" />
-              View Ledger
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex flex-wrap rounded-lg bg-muted p-1 gap-1 border border-border">
-        {(["salary", "ledger", "attendance", "overview"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`flex-1 min-w-[80px] py-1.5 text-xs font-semibold rounded capitalize transition-colors ${
-              tab === t
-                ? "bg-background text-foreground shadow-sm border border-border"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
-            }`}
-          >
-            {t === "overview" && "👤 Overview"}
-            {t === "salary" && "💰 Salary"}
-            {t === "ledger" && "💸 Ledger"}
-            {t === "attendance" && "📋 Attendance"}
-          </button>
-        ))}
+        </div>
       </div>
 
-      {/* SECTION 1 — OVERVIEW */}
-      {tab === "overview" && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in duration-200">
-          {/* Column 1: Details */}
-          <Card className="md:col-span-2">
-            <CardHeader className="border-b border-border">
-              <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
-                👤 Professional Profile
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-5 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Full Name</span>
-                  <p className="text-sm font-bold text-foreground">{staff.name}</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Role / Designation</span>
-                  <p className="text-sm font-bold text-foreground capitalize">{staff.role}</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Phone Number</span>
-                  <p className="text-sm font-bold text-foreground">{staff.phone}</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Employment Status</span>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className={`h-2 w-2 rounded-full ${staff.status === "active" ? "bg-emerald-500" : "bg-zinc-500"}`} />
-                    <p className="text-sm font-bold text-foreground capitalize">{staff.status}</p>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Salary Configuration</span>
-                  <p className="text-sm font-bold text-foreground capitalize">{staff.salaryType} ({staff.salaryType === "monthly" ? `${formatCurrency(staff.monthlySalary)}/mo` : `${formatCurrency(staff.dailyWage)}/day`})</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Date Joined</span>
-                  <p className="text-sm font-bold text-foreground">
-                    {staff.joiningDate ? formatDate(staff.joiningDate) : "N/A"} ({calculateTenure(staff.joiningDate)})
-                  </p>
-                </div>
-                <div className="col-span-1 sm:col-span-2 space-y-1 border-t border-border/50 pt-3">
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Residential Address</span>
-                  <p className="text-sm text-foreground leading-relaxed">{staff.address || "No address provided."}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Column 2: Quick Cards / Status Summary */}
-          <div className="space-y-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">Attendance Performance</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-extrabold text-foreground">{attendanceRate}%</span>
-                  <span className="text-xs text-muted-foreground">attendance</span>
-                </div>
-                <div className="h-1.5 w-full bg-muted rounded-full mt-3 overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${attendanceRate}%` }} />
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-2">Based on attendance records for {formatMonth(attendanceMonth)}.</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">Outstanding Ledger Balance</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-extrabold text-amber-500">{formatCurrency(outstanding)}</span>
-                </div>
-                <div className="h-1.5 w-full bg-muted rounded-full mt-3 overflow-hidden">
-                  <div className="h-full bg-amber-500 rounded-full" style={{ width: `${progressPct}%` }} />
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-2">{progressPct.toFixed(0)}% of total advances cleared.</p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      )}
-
-      {/* SECTION 2 — SALARY WORKSPACE */}
-      {tab === "salary" && (
-        <div className="space-y-5 animate-in fade-in duration-200">
-          {/* REQUIRED FINANCIAL SUMMARY CARD */}
-          <Card className="glass-card border-indigo-500/25 shadow-xl shadow-indigo-500/5 overflow-hidden">
-            <CardHeader className="pb-3 border-b border-glass-border flex flex-row items-center justify-between">
-              <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                Payroll Summary — {formatMonth(getCurrentMonth())}
-              </CardTitle>
-              {currentMonthRecord && (
-                <Badge variant={statusBadgeVariant}>{currentMonthRecord.status.toUpperCase()}</Badge>
-              )}
-            </CardHeader>
-            <CardContent className="p-0">
-              {currentMonthRecord ? (
-                <div className="p-5 space-y-4">
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                    <div className="bg-glass-bg border border-glass-border p-3.5 rounded-xl text-center">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Gross Salary</p>
-                      <p className="text-base font-extrabold text-white mt-1">
-                        {formatCurrency(currentMonthRecord.grossSalary ?? (currentMonthRecord.baseSalary + currentMonthRecord.overtime + currentMonthRecord.bonus - currentMonthRecord.extraDeduction - currentMonthRecord.leaveDeduction))}
-                      </p>
-                    </div>
-                    <div className="bg-glass-bg border border-glass-border p-3.5 rounded-xl text-center">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Outstanding Advance</p>
-                      <p className="text-base font-extrabold text-amber-400 mt-1">
-                        {formatCurrency(currentMonthRecord.outstandingBefore ?? 0)}
-                      </p>
-                    </div>
-                    <div className="bg-rose-500/10 border border-rose-500/20 p-3.5 rounded-xl text-center">
-                      <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest">Recovered This Month</p>
-                      <p className="text-base font-extrabold text-rose-400 mt-1">
-                        -{formatCurrency(currentMonthRecord.recoveredAmount ?? currentMonthRecord.advance)}
-                      </p>
-                    </div>
-                    <div className="bg-glass-bg border border-glass-border p-3.5 rounded-xl text-center">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Remaining Outstanding</p>
-                      <p className="text-base font-extrabold text-white mt-1">
-                        {formatCurrency(currentMonthRecord.outstandingAfter ?? 0)}
-                      </p>
-                    </div>
-                    <div className="bg-emerald-500/10 border border-emerald-500/20 p-3.5 rounded-xl text-center col-span-2 sm:col-span-1">
-                      <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Final Payable</p>
-                      <p className="text-base font-extrabold text-emerald-400 mt-1">
-                        {formatCurrency(currentMonthRecord.finalSalary)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Payment progress */}
-                  <div className="bg-[#0b0e14]/50 border border-glass-border p-4 rounded-xl space-y-3">
-                    <div className="flex justify-between items-center text-xs font-semibold">
-                      <span className="text-muted-foreground">Salary Paid: {formatCurrency(currentMonthRecord.totalPaid)} / {formatCurrency(currentMonthRecord.finalSalary)}</span>
-                      <span className="text-emerald-400 font-bold">{Math.round((currentMonthRecord.totalPaid / (currentMonthRecord.finalSalary || 1)) * 100)}% Complete</span>
-                    </div>
-                    <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full" style={{ width: `${(currentMonthRecord.totalPaid / (currentMonthRecord.finalSalary || 1)) * 100}%` }} />
-                    </div>
-                    {currentMonthRecord.status !== "paid" && (
-                      <div className="flex justify-end pt-1">
-                        <Button size="sm" onClick={handleActionPaySalary} className="h-9 px-4 text-xs font-semibold gap-1">
-                          <HandCoins className="h-3.5 w-3.5" /> Record Payment
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="p-8 text-center text-muted-foreground space-y-3">
-                  <p className="text-sm">No payroll record processed for {formatMonth(getCurrentMonth())} yet.</p>
-                  <Button onClick={handleActionPaySalary} className="gap-2 mx-auto text-xs font-semibold h-9 px-4">
-                    <Coins className="h-4 w-4" /> Process & Pay Salary
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Salary History */}
-          <Card className="glass-card">
-            <CardHeader className="pb-3 border-b border-glass-border">
-              <CardTitle className="text-sm font-bold flex items-center gap-2">
-                <History className="h-4 w-4 text-primary" />
-                Historical Salary Payslips & Transactions
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {salaryHistory.length === 0 ? (
-                <p className="text-center text-muted-foreground py-10 text-xs">No salary payments on record yet.</p>
-              ) : (
-                <div className="divide-y divide-glass-border">
-                  {salaryHistory.map((s) => {
-                    const recordPayments = paymentsHistory.filter((p) => p.salaryRecordId === s.id);
-                    const sortedPayments = [...recordPayments].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-                    const totalPayable = s.finalSalary + (s.previousDue || 0);
-                    const isExpanded = expandedMonths[s.id!] ?? false;
-                    const monthLabel = formatMonth(`${s.year}-${s.month.toString().padStart(2, "0")}`);
-
-                    return (
-                      <div key={s.id} className="transition-colors border-b border-glass-border/30 last:border-b-0">
-                        {/* Header Row */}
-                        <div 
-                          onClick={() => setExpandedMonths(prev => ({ ...prev, [s.id!]: !isExpanded }))}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-5 py-4 cursor-pointer hover:bg-glass-bg/10 select-none transition-all"
-                        >
-                          <div>
-                            <p className="text-sm font-bold text-foreground flex items-center gap-2">
-                              <span>{monthLabel}</span>
-                              <span className="text-[10px] text-muted-foreground font-semibold">
-                                ({formatCurrency(s.totalPaid)} / {formatCurrency(totalPayable)} Paid)
-                              </span>
-                            </p>
-                            <div className="flex items-center gap-2 flex-wrap mt-1 text-[11px] text-muted-foreground">
-                              <span>Base: {formatCurrency(s.baseSalary)}</span>
-                              {s.bonus > 0 && <span>• Bonus: {formatCurrency(s.bonus)}</span>}
-                              {s.overtime > 0 && <span>• OT: {formatCurrency(s.overtime)}</span>}
-                              {s.advance > 0 && <span>• Advance Rec: {formatCurrency(s.advance)}</span>}
-                              {s.extraDeduction > 0 && <span>• Extra Ded: {formatCurrency(s.extraDeduction)}</span>}
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between sm:justify-end gap-3">
-                            <div className="text-left sm:text-right shrink-0">
-                              <p className="text-sm font-black text-white">
-                                {s.remainingDue > 0 ? `${formatCurrency(s.remainingDue)} Due` : "Fully Settled"}
-                              </p>
-                              <Badge 
-                                variant={s.status === "paid" ? "success" : s.status === "partial" ? "warning" : "destructive"} 
-                                className="text-[9px] uppercase font-bold tracking-wider mt-0.5 scale-95"
-                              >
-                                {s.status}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDownloadSlip(s);
-                                }}
-                                className="h-8 px-2.5 text-[10px] font-bold gap-1 bg-glass-bg border-glass-border hover:bg-glass-bg/60 text-white"
-                              >
-                                <Download className="h-3 w-3" />
-                                Summary
-                              </Button>
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDeleteId(s.id!);
-                                }} 
-                                className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                              <span className={`text-muted-foreground text-xs ml-1 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}>
-                                ▼
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Collapsible Payments Timeline */}
-                        {isExpanded && (
-                          <div className="px-6 pb-5 pt-3 bg-[#0d1117]/30 border-t border-glass-border/10 space-y-3">
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                              Payment Transactions Timeline
-                            </p>
-                            {sortedPayments.length === 0 ? (
-                              <p className="text-xs text-muted-foreground italic pl-3">No payments recorded for this period yet.</p>
-                            ) : (
-                              <div className="relative border-l border-glass-border/30 ml-2 pl-4 space-y-4 pt-1">
-                                {sortedPayments.map((p, idx) => {
-                                  const paidUpToThis = sortedPayments.slice(0, idx + 1).reduce((sum, pay) => sum + pay.amountPaid, 0);
-                                  const remAfterThis = Math.max(0, totalPayable - paidUpToThis);
-                                  const isFullyPaidAtThisStep = remAfterThis <= 0;
-                                  
-                                  return (
-                                    <div key={p.id} className="relative flex items-center justify-between gap-4 group">
-                                      {/* Timeline Connector Dot */}
-                                      <div className={`absolute -left-[22px] w-[8px] h-[8px] rounded-full border ${
-                                        isFullyPaidAtThisStep 
-                                          ? "bg-emerald-500 border-emerald-500" 
-                                          : "bg-amber-500 border-amber-500"
-                                      }`} />
-
-                                      <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <span className="text-xs font-bold text-foreground">
-                                            Payment #{idx + 1}
-                                          </span>
-                                          <Badge 
-                                            variant={isFullyPaidAtThisStep ? "success" : "warning"} 
-                                            className="text-[8px] uppercase tracking-widest scale-90"
-                                          >
-                                            {isFullyPaidAtThisStep ? "Paid" : "Partial"}
-                                          </Badge>
-                                        </div>
-                                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground flex-wrap">
-                                          <span className="font-semibold text-white">Paid: {formatCurrency(p.amountPaid)}</span>
-                                          <span>•</span>
-                                          <span>Date: {formatDate(p.paymentDate)}</span>
-                                          {p.note && (
-                                            <>
-                                              <span>•</span>
-                                              <span className="italic">"{p.note}"</span>
-                                            </>
-                                          )}
-                                        </div>
-                                      </div>
-
-                                      <div className="flex items-center gap-2">
-                                        <Button 
-                                          size="sm" 
-                                          variant="outline" 
-                                          onClick={() => handleDownloadSlip(s, p.id)} 
-                                          className="h-8 px-2.5 text-[10px] font-bold gap-1 bg-glass-bg border-glass-border hover:bg-glass-bg/60 text-white"
-                                        >
-                                          <Download className="h-3 w-3" /> Slip #{idx + 1}
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* SECTION 3 — LEDGER / ADVANCE WORKSPACE */}
-      {tab === "ledger" && (
-        <div className="space-y-4 animate-in fade-in duration-200">
-          {/* Summary Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Advances</p>
-                <p className="text-xl font-bold text-foreground">{formatCurrency(totalAdvances)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-[10px] font-bold text-emerald-500/70 uppercase tracking-wider mb-1">Recovered (Salary)</p>
-                <p className="text-xl font-bold text-emerald-500 dark:text-emerald-400">{formatCurrency(totalRecovered)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-[10px] font-bold text-teal-500/70 uppercase tracking-wider mb-1">Repayments (Cash)</p>
-                <p className="text-xl font-bold text-teal-500 dark:text-teal-400">{formatCurrency(totalRepayments)}</p>
-              </CardContent>
-            </Card>
-            <Card className="border-amber-500/35">
-              <CardContent className="p-4">
-                <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider mb-1">Outstanding Balance</p>
-                <p className="text-xl font-bold text-amber-500 dark:text-amber-400">{formatCurrency(outstanding)}</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Progress & Actions */}
-          <Card>
-            <CardContent className="p-4 space-y-4">
-              <div>
-                <div className="flex justify-between items-center text-xs font-semibold text-muted-foreground mb-1.5">
-                  <span>Settlement Progress</span>
-                  <span>{progressPct.toFixed(0)}% Settled</span>
-                </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                    style={{ width: `${progressPct}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-2 pt-1">
-                <Button
-                  onClick={() => {
-                    setAdvDate(new Date().toISOString().split("T")[0]);
-                    setIsAdvanceModalOpen(true);
-                  }}
-                  className="flex-1 min-w-[120px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 dark:text-rose-400 border border-rose-500/20 h-9 text-xs font-semibold gap-1.5"
-                >
-                  <TrendingUp className="h-3.5 w-3.5" />
-                  Give Advance
-                </Button>
-                <Button
-                  onClick={() => {
-                    setRepDate(new Date().toISOString().split("T")[0]);
-                    setIsRepaymentModalOpen(true);
-                  }}
-                  className="flex-1 min-w-[120px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 h-9 text-xs font-semibold gap-1.5"
-                >
-                  <TrendingDown className="h-3.5 w-3.5" />
-                  Record Repayment
-                </Button>
-                <Button
-                  onClick={() => {
-                    setAdjDate(new Date().toISOString().split("T")[0]);
-                    setAdjType("add");
-                    setIsAdjustmentModalOpen(true);
-                  }}
-                  className="flex-1 min-w-[120px] bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 dark:text-indigo-400 border border-indigo-500/20 h-9 text-xs font-semibold gap-1.5"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Adjust Balance
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Ledger Timeline */}
-          <Card ref={timelineRef}>
-            <CardHeader className="pb-2 border-b border-border">
-              <CardTitle className="text-sm font-bold flex items-center gap-2">
-                <History className="h-4 w-4 text-primary" />
-                Financial Ledger Timeline
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-5">
-              {ledgerHistory.length === 0 ? (
-                <div className="text-center py-10">
-                  <p className="text-xs text-muted-foreground">No transaction entries found in ledger.</p>
-                </div>
-              ) : (
-                <div className="space-y-3 relative before:absolute before:left-[13px] before:top-2 before:bottom-2 before:w-0.5 before:bg-border">
-                  {ledgerHistory.map((entry) => {
-                    let icon = <Coins className="h-3.5 w-3.5 text-muted-foreground" />;
-                    let iconBg = "bg-muted/10 border-border";
-                    let title = "Transaction";
-                    let amountText = formatCurrency(entry.amount);
-                    let amountColor = "text-foreground";
-                    
-                    if (entry.type === "salary_advance") {
-                       icon = <TrendingUp className="h-3.5 w-3.5 text-rose-500 dark:text-rose-400" />;
-                       iconBg = "bg-rose-500/10 border-rose-500/20";
-                       title = "Salary Advance Given";
-                       amountText = `+${formatCurrency(entry.amount)}`;
-                       amountColor = "text-rose-500 dark:text-rose-400 font-bold";
-                    } else if (entry.type === "salary_recovery") {
-                       icon = <TrendingDown className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400" />;
-                       iconBg = "bg-emerald-500/10 border-emerald-500/20";
-                       title = "Auto-Recovered in Salary";
-                       amountText = `-${formatCurrency(entry.amount)}`;
-                       amountColor = "text-emerald-500 dark:text-emerald-400 font-bold";
-                    } else if (entry.type === "manual_repayment") {
-                       icon = <TrendingDown className="h-3.5 w-3.5 text-teal-500 dark:text-teal-400" />;
-                       iconBg = "bg-teal-500/10 border-teal-500/20";
-                       title = "Manual Repayment Received";
-                       amountText = `-${formatCurrency(entry.amount)}`;
-                       amountColor = "text-teal-500 dark:text-teal-400 font-bold";
-                    } else if (entry.type === "manual_adjustment") {
-                       icon = <RefreshCw className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />;
-                       iconBg = "bg-indigo-500/10 border-indigo-500/20";
-                       title = "Manual Ledger Adjustment";
-                       amountText = entry.amount > 0 ? `+${formatCurrency(entry.amount)}` : `-${formatCurrency(Math.abs(entry.amount))}`;
-                       amountColor = entry.amount > 0 ? "text-rose-500 dark:text-rose-400 font-bold" : "text-emerald-500 dark:text-emerald-400 font-bold";
-                    } else if (entry.type === "salary_generated") {
-                       icon = <Coins className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />;
-                       iconBg = "bg-blue-500/10 border-blue-500/20";
-                       title = "Salary Generated (Payout)";
-                       amountText = formatCurrency(entry.amount);
-                       amountColor = "text-blue-500 dark:text-blue-400 font-bold";
-                    } else if (entry.type === "salary_paid") {
-                       icon = <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400" />;
-                       iconBg = "bg-emerald-500/10 border-emerald-500/20";
-                       title = "Salary Payout Paid";
-                       amountText = formatCurrency(entry.amount);
-                       amountColor = "text-emerald-500 dark:text-emerald-400 font-bold";
-                    }
-
-                    return (
-                      <div key={entry.id} className="flex items-start gap-4 relative">
-                        {/* Timeline Circle */}
-                        <div className={`w-[28px] h-[28px] rounded-full flex items-center justify-center border ${iconBg} shrink-0 z-10 bg-card`}>
-                          {icon}
-                        </div>
-                        
-                        <div className="flex-1 min-w-0 bg-card border border-border rounded-lg p-3 hover:bg-muted/30 transition-colors">
-                          <div className="flex items-start justify-between gap-3 flex-wrap">
-                            <div>
-                              <p className="text-xs font-bold text-foreground">{title}</p>
-                              <p className="text-[10px] text-muted-foreground mt-0.5">{formatDate(entry.date)}</p>
-                            </div>
-                            <span className={`text-sm ${amountColor}`}>{amountText}</span>
-                          </div>
-                          {entry.note && (
-                            <p className="text-[11px] text-muted-foreground italic mt-1 bg-muted p-2 rounded border border-border/50">
-                              "{entry.note}"
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* SECTION 4 — ATTENDANCE SUMMARY */}
-      {tab === "attendance" && (
-        <Card className="glass-card animate-in fade-in duration-200">
-          <CardHeader className="flex flex-row items-center justify-between gap-4 pb-3 border-b border-glass-border flex-wrap">
-            <CardTitle className="text-sm font-bold flex items-center gap-2">
-              <CalendarCheck className="h-4 w-4 text-emerald-400" />
-              Attendance Statistics
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <button 
-                type="button"
-                onClick={() => {
-                  const [yr, mo] = attendanceMonth.split("-");
-                  const d = new Date(Number(yr), Number(mo) - 2, 1);
-                  setAttendanceMonth(d.toISOString().slice(0, 7));
-                }}
-                className="h-9 w-9 flex items-center justify-center rounded-lg border border-glass-border hover:bg-glass-bg text-foreground transition-colors font-bold text-xs"
-              >
-                ◀
-              </button>
-              <input
-                type="month"
-                value={attendanceMonth}
-                onChange={(e) => setAttendanceMonth(e.target.value)}
-                className="h-9 rounded-lg border border-glass-border bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-bold"
-              />
-              <button 
-                type="button"
-                onClick={() => {
-                  const [yr, mo] = attendanceMonth.split("-");
-                  const d = new Date(Number(yr), Number(mo), 1);
-                  setAttendanceMonth(d.toISOString().slice(0, 7));
-                }}
-                className="h-9 w-9 flex items-center justify-center rounded-lg border border-glass-border hover:bg-glass-bg text-foreground transition-colors font-bold text-xs"
-              >
-                ▶
-              </button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-5">
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3.5 text-center">
-                <p className="text-xs text-muted-foreground">Present</p>
-                <p className="text-2xl font-extrabold text-emerald-400 mt-1">{presentDays}</p>
-              </div>
-              <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3.5 text-center">
-                <p className="text-xs text-muted-foreground">Absent</p>
-                <p className="text-2xl font-extrabold text-red-400 mt-1">{absentDays}</p>
-              </div>
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3.5 text-center">
-                <p className="text-xs text-muted-foreground">Half Day</p>
-                <p className="text-2xl font-extrabold text-amber-400 mt-1">{halfDays}</p>
-              </div>
-            </div>
-
-            <div className="pt-2">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3">Attendance Calendar Grid</p>
-              {sortedAtt.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8 text-xs">No attendance marked for this month.</p>
-              ) : (
-                <div className="grid grid-cols-7 gap-1.5">
-                  {sortedAtt.map((a) => (
-                    <div key={a.id || a.date} title={`${a.date}: ${a.status}`} className={`aspect-square rounded-xl text-xs flex items-center justify-center font-bold ${
-                      a.status === "present" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" :
-                      a.status === "absent" ? "bg-red-500/20 text-red-400 border border-red-500/30" :
-                      a.status === "half_day" ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" :
-                      "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                    }`}>
-                      {parseInt(a.date.slice(8))}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+      {/* Main Grid Section */}
+      <div className="grid grid-cols-2 gap-4 mt-6">
+        <Card className="border-border/50 shadow-sm">
+          <CardContent className="p-5 flex flex-col items-center text-center justify-center gap-1">
+            <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Present Day</p>
+            <p className="text-3xl font-black text-foreground mt-1">{presentDays}</p>
           </CardContent>
         </Card>
-      )}
+        
+        <Card className="border-border/50 shadow-sm">
+          <CardContent className="p-5 flex flex-col items-center text-center justify-center gap-1">
+            <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Salary</p>
+            <p className="text-xl font-black text-blue-500 mt-2">{formatCurrency(staff.salaryType === 'monthly' ? staff.monthlySalary : staff.dailyWage)}</p>
+          </CardContent>
+        </Card>
 
+        <Card className="border-border/50 shadow-sm">
+          <CardContent className="p-5 flex flex-col items-center text-center justify-center gap-1">
+            <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Advance</p>
+            <p className="text-xl font-black text-rose-500 mt-2">{formatCurrency(outstanding)}</p>
+          </CardContent>
+        </Card>
 
+        <Card className="border-border/50 shadow-sm bg-primary/5">
+          <CardContent className="p-5 flex flex-col items-center text-center justify-center gap-1">
+            <p className="text-[11px] font-bold text-primary uppercase tracking-widest">Remaining (बाकी)</p>
+            <p className="text-xl font-black text-primary mt-2">{formatCurrency(pendingSalaryDue)}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Bottom Section Actions */}
+      <div className="grid grid-cols-1 gap-3 mt-6 mb-4">
+        <Button
+          size="lg"
+          onClick={handleActionPaySalary}
+          className="w-full text-base font-bold rounded-xl h-14 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+        >
+          {currentMonthRecord ? 'Pay Salary' : 'Generate Salary Slip'}
+        </Button>
+        <div className="grid grid-cols-2 gap-3">
+          <Button
+            size="lg"
+            onClick={() => {
+              setAdvDate(new Date().toISOString().split('T')[0]);
+              setIsAdvanceModalOpen(true);
+            }}
+            variant="outline"
+            className="w-full text-sm font-bold rounded-xl h-12 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border-transparent shadow-sm"
+          >
+            Give Advance
+          </Button>
+          <Button
+            size="lg"
+            onClick={() => {
+              setRepDate(new Date().toISOString().split('T')[0]);
+              setIsRepaymentModalOpen(true);
+            }}
+            variant="outline"
+            className="w-full text-sm font-bold rounded-xl h-12 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 border-transparent shadow-sm"
+          >
+            Take Repayment
+          </Button>
+        </div>
+      </div>
 
       {/* ── PAYROLL MODAL ── */}
       <Modal open={isPayrollModalOpen} onClose={() => setIsPayrollModalOpen(false)} title="Process Monthly Salary">

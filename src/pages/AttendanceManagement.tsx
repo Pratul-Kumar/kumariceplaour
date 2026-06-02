@@ -13,11 +13,12 @@ const STATUS_CONFIG: Record<AttendanceStatus, { label: string; short: string; bg
   present:  { label: "Present",  short: "P", bg: "bg-emerald-500/20", text: "text-emerald-700 dark:text-emerald-400", ring: "ring-emerald-500", icon: CheckCircle },
   absent:   { label: "Absent",   short: "A", bg: "bg-red-500/20",     text: "text-red-700 dark:text-red-400",         ring: "ring-red-500",     icon: XCircle },
   half_day: { label: "Half Day", short: "H", bg: "bg-amber-500/20",   text: "text-amber-700 dark:text-amber-400",     ring: "ring-amber-500",   icon: Clock },
+  leave:    { label: "Leave",    short: "L", bg: "bg-blue-500/20",    text: "text-blue-700 dark:text-blue-400",       ring: "ring-blue-500",    icon: CalendarOff },
 };
 
 const NEXT_STATUS: Record<string, AttendanceStatus | "clear"> = {
   "undefined": "present", "present": "absent",
-  "absent": "half_day", "half_day": "clear",
+  "absent": "half_day", "half_day": "leave", "leave": "clear",
 };
 
 const STATUS_ENTRIES = Object.entries(STATUS_CONFIG) as [AttendanceStatus, typeof STATUS_CONFIG[AttendanceStatus]][];
@@ -150,18 +151,31 @@ export function AttendanceManagement() {
   // Handlers
   const handleCellClick = useCallback(async (staffId: string, date: string, currentStatus?: AttendanceStatus) => {
     const nextStatus = NEXT_STATUS[String(currentStatus)] || "present";
+    
+    setAttendance(prev => {
+      const filtered = prev.filter(a => !(a.staffId === staffId && a.date === date));
+      if (nextStatus === "clear") return filtered;
+      return [...filtered, { id: `temp-${Date.now()}`, staffId, date, status: nextStatus as AttendanceStatus, overtimeHours: 0 } as Attendance];
+    });
+
     try {
       if (nextStatus === "clear") await attendanceService.deleteRecord(staffId, date);
-      else await attendanceService.upsert({ staffId, date, status: nextStatus, overtimeHours: 0 });
+      else await attendanceService.upsert({ staffId, date, status: nextStatus as AttendanceStatus, overtimeHours: 0 });
     } catch (err: any) {
       toast({ type: "error", title: "Sync Error", description: err.message || "Failed to update attendance." });
     }
   }, [toast]);
 
   const setExactStatus = useCallback(async (staffId: string, date: string, status: AttendanceStatus | "clear") => {
+    setAttendance(prev => {
+      const filtered = prev.filter(a => !(a.staffId === staffId && a.date === date));
+      if (status === "clear") return filtered;
+      return [...filtered, { id: `temp-${Date.now()}`, staffId, date, status: status as AttendanceStatus, overtimeHours: 0 } as Attendance];
+    });
+
     try {
       if (status === "clear") await attendanceService.deleteRecord(staffId, date);
-      else await attendanceService.upsert({ staffId, date, status, overtimeHours: 0 });
+      else await attendanceService.upsert({ staffId, date, status: status as AttendanceStatus, overtimeHours: 0 });
     } catch (err: any) {
       console.error("[setExactStatus]", err);
       toast({ type: "error", title: "Sync Error", description: err.message || "Failed to update attendance." });
@@ -383,7 +397,7 @@ export function AttendanceManagement() {
                           const cfg = status ? STATUS_CONFIG[status] : null;
 
                           return (
-                            <div key={date} className="flex justify-center relative">
+                            <div key={`${selectedStaffId}-${date}`} className="flex justify-center relative">
                               <button
                                 onClick={() => handleCellClick(selectedStaffId, date, status)}
                                 className={cn(
@@ -480,7 +494,7 @@ export function AttendanceManagement() {
                               const status = staffAtt[date];
                               const cfg = status ? STATUS_CONFIG[status] : null;
                               return (
-                                <td key={date} className="px-[2px] py-1 border-l border-border">
+                                <td key={`${s.id}-${date}`} className="px-[2px] py-1 border-l border-border">
                                   <button
                                     onClick={() => handleCellClick(s.id!, date, status)}
                                     className={cn(

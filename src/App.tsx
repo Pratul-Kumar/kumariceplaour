@@ -8,7 +8,8 @@ import { useAuthStore } from "@/store/useAuthStore";
 const Login = lazy(() => import("@/pages/Login").then(m => ({ default: m.Login })));
 const Dashboard = lazy(() => import("@/pages/Dashboard").then(m => ({ default: m.Dashboard })));
 const StaffManagement = lazy(() => import("@/pages/StaffManagement").then(m => ({ default: m.StaffManagement })));
-const StaffProfile = lazy(() => import("@/pages/StaffProfile").then(m => ({ default: m.StaffProfile })));
+const MoneyProfile = lazy(() => import("@/pages/MoneyProfile").then(m => ({ default: m.MoneyProfile })));
+const SalaryProfile = lazy(() => import("@/pages/SalaryProfile").then(m => ({ default: m.SalaryProfile })));
 const AttendanceManagement = lazy(() => import("@/pages/AttendanceManagement").then(m => ({ default: m.AttendanceManagement })));
 const ExpenseManagement = lazy(() => import("@/pages/ExpenseManagement").then(m => ({ default: m.ExpenseManagement })));
 const SalaryManagement = lazy(() => import("@/pages/SalaryManagement").then(m => ({ default: m.SalaryManagement })));
@@ -86,7 +87,8 @@ export function App() {
                     <Routes>
                       <Route path="/" element={<Dashboard />} />
                       <Route path="/staff" element={<StaffManagement />} />
-                      <Route path="/staff/:id" element={<StaffProfile />} />
+                      <Route path="/money/:id" element={<MoneyProfile />} />
+                      <Route path="/salary/:id" element={<SalaryProfile />} />
                       <Route path="/attendance" element={<AttendanceManagement />} />
                       <Route path="/expenses" element={<ExpenseManagement />} />
                       <Route path="/salary" element={<SalaryManagement />} />

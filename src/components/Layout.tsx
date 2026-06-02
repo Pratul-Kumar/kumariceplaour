@@ -13,10 +13,11 @@ import { PoweredByFooter } from "@/components/PoweredByFooter";
 
 const NAV_ITEMS = [
   { to: "/",          icon: LayoutDashboard, label: "Dashboard",  color: "from-violet-500 to-indigo-500" },
-  { to: "/staff",     icon: Users,           label: "Staff",      color: "from-blue-500 to-cyan-500" },
   { to: "/attendance",icon: ClipboardCheck,  label: "Attendance", color: "from-emerald-500 to-teal-500" },
+  { to: "/staff?mode=salary",icon: IndianRupee,  label: "Salary", color: "from-blue-500 to-indigo-500" },
+  { to: "/staff?mode=money", icon: Receipt,      label: "Money",  color: "from-amber-500 to-orange-500" },
+  { to: "/staff",     icon: Users,           label: "Staff",      color: "from-indigo-500 to-cyan-500" },
   { to: "/expenses",  icon: Receipt,         label: "Expenses",   color: "from-rose-500 to-pink-500" },
-  { to: "/analytics", icon: TrendingUp,      label: "Analytics",  color: "from-purple-500 to-violet-500" },
 ];
 
 const NavItem = memo(function NavItem({

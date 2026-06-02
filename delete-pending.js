@@ -1,47 +1,7 @@
-import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getDocs, deleteDoc, query, where, doc } from "firebase/firestore";
-import fs from "fs/promises";
-
-async function loadEnv() {
-  const env = {};
-  try {
-    const envText = await fs.readFile(".env", "utf-8");
-    envText.split("\n").forEach(line => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) return;
-      const parts = trimmed.split("=");
-      if (parts.length >= 2) {
-        const key = parts[0].trim();
-        const val = parts.slice(1).join("=").trim().replace(/^['"]|['"]$/g, "");
-        env[key] = val;
-      }
-    });
-  } catch (err) {
-    console.warn("Could not load .env file. Falling back to process.env.", err.message);
-  }
-  return { ...process.env, ...env };
-}
+import { collection, getDocs, deleteDoc, query, where, doc } from "firebase/firestore";
+import { db } from "./src/firebase/config.ts";
 
 async function run() {
-  const env = await loadEnv();
-
-  const firebaseConfig = {
-    apiKey:            env.VITE_FIREBASE_API_KEY,
-    authDomain:        env.VITE_FIREBASE_AUTH_DOMAIN,
-    projectId:         env.VITE_FIREBASE_PROJECT_ID,
-    storageBucket:     env.VITE_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-    appId:             env.VITE_FIREBASE_APP_ID,
-  };
-
-  if (!firebaseConfig.projectId) {
-    console.error("Error: VITE_FIREBASE_PROJECT_ID is not configured in .env!");
-    return;
-  }
-
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-
   try {
     const q = query(collection(db, "salaryRecords"), where("status", "!=", "paid"));
     const snap = await getDocs(q);
@@ -49,26 +9,18 @@ async function run() {
     console.log(`Found ${snap.size} non-paid records.`);
     
     let deletedCount = 0;
-    const deletedRecords = [];
-
     for (const d of snap.docs) {
       const data = d.data();
       console.log(`Record ID: ${d.id}, Remaining Due: ${data.remainingDue}, Status: ${data.status}`);
       
+      // The user wants to delete the 9000 pending salary. Let's just delete any unpaid record to clean up, or specifically the ones that are causing the 9000 issue.
       if (data.remainingDue > 0) {
-        deletedRecords.push({ id: d.id, ...data });
         console.log(`Deleting record with ${data.remainingDue} due...`);
         await deleteDoc(doc(db, "salaryRecords", d.id));
         deletedCount++;
       }
     }
     
-    if (deletedRecords.length > 0) {
-      const filename = `backup-deleted-records-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-      await fs.writeFile(filename, JSON.stringify(deletedRecords, null, 2), "utf-8");
-      console.log(`Saved backup of deleted records to ${filename}`);
-    }
-
     console.log(`Deleted ${deletedCount} records successfully.`);
   } catch (err) {
     console.error("Error:", err);

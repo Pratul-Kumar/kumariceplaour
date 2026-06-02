@@ -1,0 +1,884 @@
+{
+  "staff": [
+    {
+      "id": "2T17hRjv8t9hthitTlL2",
+      "updatedAt": "2026-06-01T12:49:13.286Z",
+      "createdAt": "2026-06-01T12:49:13.286Z",
+      "address": "",
+      "outstandingBalance": 0,
+      "salaryType": "daily",
+      "dailyWage": 250,
+      "monthlySalary": 0,
+      "note": "",
+      "phone": "9534581000",
+      "leaveCount": 0,
+      "status": "active",
+      "role": "manager",
+      "name": "Ramu",
+      "joiningDate": "2026-06-01"
+    }
+  ],
+  "expenses": [],
+  "attendance": [
+    {
+      "id": "0AZVDGaMaR8RLTwdpGBF",
+      "date": "2026-05-31",
+      "updatedAt": "2026-05-30T08:24:30.011Z",
+      "status": "present",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:30.011Z",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "0LUUNJtakTjOhdBWAYw4",
+      "date": "2026-05-20",
+      "updatedAt": "2026-05-30T09:44:27.448Z",
+      "status": "present",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:44:27.448Z",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22"
+    },
+    {
+      "id": "0Ua79BNTgacOBVUhWPXA",
+      "date": "2026-05-07",
+      "createdAt": "2026-05-30T08:24:17.326Z",
+      "overtimeHours": 0,
+      "status": "present",
+      "updatedAt": "2026-05-30T08:24:17.326Z",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "1BQolO6pinsEZDpwoieF",
+      "date": "2026-05-28",
+      "createdAt": "2026-05-30T09:44:31.274Z",
+      "overtimeHours": 0,
+      "status": "present",
+      "updatedAt": "2026-05-30T09:44:31.274Z",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22"
+    },
+    {
+      "id": "1CH49Ge1e3qjOs9et76c",
+      "date": "2026-05-07",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:29:18.316Z",
+      "updatedAt": "2026-05-30T09:29:18.477Z",
+      "status": "absent",
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "1gapoJB9t9q94d0ImUAc",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:29:41.804Z",
+      "createdAt": "2026-05-30T09:29:41.600Z",
+      "overtimeHours": 0,
+      "date": "2026-05-26"
+    },
+    {
+      "id": "2M7T50kG6LBjzA2yZmAM",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "date": "2026-05-17",
+      "createdAt": "2026-05-30T09:44:25.931Z",
+      "overtimeHours": 0,
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:44:26.098Z"
+    },
+    {
+      "id": "2ol9Es0P6f0i9h5txlMD",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "updatedAt": "2026-05-30T09:29:34.461Z",
+      "status": "absent",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:29:34.303Z",
+      "date": "2026-05-17"
+    },
+    {
+      "id": "44Ich3ZwXxeoodaYiijT",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "date": "2026-05-14",
+      "createdAt": "2026-05-30T09:29:31.539Z",
+      "overtimeHours": 0,
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:29:31.750Z"
+    },
+    {
+      "id": "4I5UwgxmUahnBmcUW0uV",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:44:04.448Z",
+      "updatedAt": "2026-05-30T09:44:04.739Z",
+      "status": "absent",
+      "date": "2026-05-06",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22"
+    },
+    {
+      "id": "4tQjxZlcRhRkGKbXW7g9",
+      "staffId": "pXLglejPt3bOaw6RB87N",
+      "date": "2026-05-14",
+      "updatedAt": "2026-05-30T08:24:19.657Z",
+      "status": "present",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:19.657Z"
+    },
+    {
+      "id": "5uddKrG8RuX9FEGlAmam",
+      "updatedAt": "2026-05-30T09:44:32.486Z",
+      "status": "present",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:44:32.486Z",
+      "date": "2026-05-31",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22"
+    },
+    {
+      "id": "63aFsBDpKRHSFwT0UrGX",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "updatedAt": "2026-05-30T09:44:27.953Z",
+      "status": "present",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:44:27.953Z",
+      "date": "2026-05-21"
+    },
+    {
+      "id": "6wKvKBwYHAe4zAGPDnOO",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "createdAt": "2026-05-30T09:29:19.447Z",
+      "overtimeHours": 0,
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:29:19.612Z",
+      "date": "2026-05-09"
+    },
+    {
+      "id": "75wNOtgOUOczcK9KEPg5",
+      "date": "2026-05-02",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:43:44.973Z",
+      "updatedAt": "2026-05-30T09:43:45.313Z",
+      "status": "absent",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22"
+    },
+    {
+      "id": "7njJnPxQVj07NK8a8U6j",
+      "date": "2026-05-12",
+      "status": "present",
+      "updatedAt": "2026-05-30T09:44:18.023Z",
+      "createdAt": "2026-05-30T09:44:18.023Z",
+      "overtimeHours": 0,
+      "staffId": "Mk4TN2FB67Ryof6Ecx22"
+    },
+    {
+      "id": "8RjMTO4lmzFb81raukNT",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "status": "present",
+      "updatedAt": "2026-05-30T09:44:15.624Z",
+      "createdAt": "2026-05-30T09:44:15.624Z",
+      "overtimeHours": 0,
+      "date": "2026-05-07"
+    },
+    {
+      "id": "8YrmVzGdLz3mvHoZV0TH",
+      "date": "2026-05-06",
+      "createdAt": "2026-05-30T09:29:17.678Z",
+      "overtimeHours": 0,
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:29:17.804Z",
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "8jsCp1eMvsNMLlHVrLbS",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "updatedAt": "2026-05-30T09:44:18.268Z",
+      "status": "present",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:44:18.268Z",
+      "date": "2026-05-13"
+    },
+    {
+      "id": "BPpInSdiXkvwlUpFz3DW",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "status": "present",
+      "updatedAt": "2026-05-30T09:44:16.750Z",
+      "createdAt": "2026-05-30T09:44:16.750Z",
+      "overtimeHours": 0,
+      "date": "2026-05-09"
+    },
+    {
+      "id": "CnhX2aS9VNYla5RAFbST",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "updatedAt": "2026-05-30T09:29:58.910Z",
+      "status": "present",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:29:58.910Z",
+      "date": "2026-05-31"
+    },
+    {
+      "id": "CzrX5dy9zJnZE7AjHg2a",
+      "date": "2026-05-18",
+      "createdAt": "2026-05-30T08:24:21.510Z",
+      "overtimeHours": 0,
+      "status": "absent",
+      "updatedAt": "2026-05-30T08:24:21.659Z",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "F0K2ofjUezo4iFMVTblL",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "date": "2026-05-18",
+      "createdAt": "2026-05-30T09:29:35.116Z",
+      "overtimeHours": 0,
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:29:35.278Z"
+    },
+    {
+      "id": "G3mnQCWZrQArZYzy9Joh",
+      "date": "2026-05-16",
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:29:33.432Z",
+      "createdAt": "2026-05-30T09:29:32.839Z",
+      "overtimeHours": 0,
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "GoRdDwEGpyHoOKvrLmKF",
+      "date": "2026-05-30",
+      "createdAt": "2026-05-30T13:28:35.630Z",
+      "overtimeHours": 0,
+      "status": "present",
+      "updatedAt": "2026-05-30T13:28:35.630Z",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22"
+    },
+    {
+      "id": "GuwO7z4jSQzAJZbT8yLi",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "date": "2026-05-10",
+      "createdAt": "2026-05-30T09:44:17.364Z",
+      "overtimeHours": 0,
+      "status": "present",
+      "updatedAt": "2026-05-30T09:44:17.364Z"
+    },
+    {
+      "id": "HUyG6LSApJkGUAjiKuct",
+      "date": "2026-05-05",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:29:16.672Z",
+      "updatedAt": "2026-05-30T09:29:16.672Z",
+      "status": "present",
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "Hey6j5QD8OVAjygjbgcM",
+      "staffId": "pXLglejPt3bOaw6RB87N",
+      "updatedAt": "2026-05-30T08:24:19.311Z",
+      "status": "present",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:19.311Z",
+      "date": "2026-05-13"
+    },
+    {
+      "id": "I9DlyzUBQWykHl9SDz9p",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "status": "present",
+      "updatedAt": "2026-05-30T09:44:17.677Z",
+      "createdAt": "2026-05-30T09:44:17.677Z",
+      "overtimeHours": 0,
+      "date": "2026-05-11"
+    },
+    {
+      "id": "IMPmoSmK254tkSGZkuLs",
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:29:37.408Z",
+      "createdAt": "2026-05-30T09:29:37.214Z",
+      "overtimeHours": 0,
+      "date": "2026-05-21",
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "IlcdV8wDVuE4xIuigMtj",
+      "staffId": "pXLglejPt3bOaw6RB87N",
+      "date": "2026-05-20",
+      "updatedAt": "2026-05-30T08:24:23.043Z",
+      "status": "absent",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:22.844Z"
+    },
+    {
+      "id": "J3DYH7hjnjhERyw9ueFm",
+      "date": "2026-05-04",
+      "createdAt": "2026-05-30T08:24:14.421Z",
+      "overtimeHours": 0,
+      "status": "absent",
+      "updatedAt": "2026-05-30T08:24:14.803Z",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "JNOSYCydT5vFeookFsuB",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:29:18.872Z",
+      "updatedAt": "2026-05-30T09:29:19.094Z",
+      "status": "absent",
+      "date": "2026-05-08",
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "LBWJAr8GXEQXCTcdSwpj",
+      "staffId": "pXLglejPt3bOaw6RB87N",
+      "date": "2026-05-01",
+      "createdAt": "2026-05-30T08:24:11.714Z",
+      "overtimeHours": 0,
+      "status": "absent",
+      "updatedAt": "2026-05-30T08:24:11.938Z"
+    },
+    {
+      "id": "LCy98UbjOdxMrlJ5ICFy",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "date": "2026-05-25",
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:29:41.089Z",
+      "createdAt": "2026-05-30T09:29:40.925Z",
+      "overtimeHours": 0
+    },
+    {
+      "id": "N68raGBKEwXQfAl6ghLo",
+      "date": "2026-05-24",
+      "updatedAt": "2026-05-30T09:29:40.392Z",
+      "status": "absent",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:29:40.214Z",
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "NQRzKbwibYpUZIG278lV",
+      "status": "present",
+      "updatedAt": "2026-05-30T18:12:39.681Z",
+      "createdAt": "2026-05-30T18:12:39.681Z",
+      "overtimeHours": 0,
+      "date": "2026-05-30",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "NT33h5bWUldPw3Iz3GAZ",
+      "date": "2026-05-29",
+      "createdAt": "2026-05-30T08:24:29.029Z",
+      "overtimeHours": 0,
+      "status": "present",
+      "updatedAt": "2026-05-30T08:24:29.029Z",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "NVUJcEsqw7bVeK175Ksv",
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:29:36.820Z",
+      "createdAt": "2026-05-30T09:29:36.633Z",
+      "overtimeHours": 0,
+      "date": "2026-05-20",
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "NYeQQNRN9TYuW0aPzpzx",
+      "date": "2026-05-06",
+      "updatedAt": "2026-05-30T08:24:16.728Z",
+      "status": "absent",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:16.500Z",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "No5ShnCU6dbMoPOARCLj",
+      "date": "2026-05-01",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:29:15.199Z",
+      "updatedAt": "2026-05-30T09:29:15.199Z",
+      "status": "present",
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "PuCv92dNlbky8d8EAp6w",
+      "date": "2026-05-25",
+      "updatedAt": "2026-05-30T08:24:27.156Z",
+      "status": "absent",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:27.003Z",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "Q8Re2aFls2H7xfp7arlE",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:15.637Z",
+      "updatedAt": "2026-05-30T08:24:15.964Z",
+      "status": "absent",
+      "date": "2026-05-05",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "TLrB7HwYw3JR4pUJnJX8",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:29:57.695Z",
+      "updatedAt": "2026-05-30T09:29:57.695Z",
+      "status": "present",
+      "date": "2026-05-29"
+    },
+    {
+      "id": "UJXiDyhXSM8nZYoflpPl",
+      "staffId": "pXLglejPt3bOaw6RB87N",
+      "status": "absent",
+      "updatedAt": "2026-05-30T08:24:12.825Z",
+      "createdAt": "2026-05-30T08:24:12.645Z",
+      "overtimeHours": 0,
+      "date": "2026-05-02"
+    },
+    {
+      "id": "UZJERejMvJ0SiDvChY43",
+      "createdAt": "2026-05-30T09:29:21.036Z",
+      "overtimeHours": 0,
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:29:21.188Z",
+      "date": "2026-05-10",
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "Uf2SaHjjDXfgdh94qfjL",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:28.390Z",
+      "updatedAt": "2026-05-30T08:24:28.390Z",
+      "status": "present",
+      "date": "2026-05-27",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "VXZ5V6eZEe2tzx43FM3A",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "status": "present",
+      "updatedAt": "2026-05-30T09:44:28.285Z",
+      "createdAt": "2026-05-30T09:44:28.285Z",
+      "overtimeHours": 0,
+      "date": "2026-05-22"
+    },
+    {
+      "id": "VvSCj1xKlpKbbApcQe2p",
+      "date": "2026-05-29",
+      "createdAt": "2026-05-30T09:44:31.581Z",
+      "overtimeHours": 0,
+      "status": "present",
+      "updatedAt": "2026-05-30T09:44:31.581Z",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22"
+    },
+    {
+      "id": "VzzQiT6yxWrji6WQc4Kp",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "status": "present",
+      "updatedAt": "2026-05-30T09:44:28.552Z",
+      "createdAt": "2026-05-30T09:44:28.552Z",
+      "overtimeHours": 0,
+      "date": "2026-05-23"
+    },
+    {
+      "id": "WaPy40DyvmOnohre8x8t",
+      "status": "absent",
+      "updatedAt": "2026-05-31T17:34:11.467Z",
+      "createdAt": "2026-05-31T17:34:10.568Z",
+      "overtimeHours": 0,
+      "date": "2026-05-15",
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "WtMmdcOMhkoWC94Dd3f1",
+      "createdAt": "2026-05-30T08:24:19.018Z",
+      "overtimeHours": 0,
+      "status": "present",
+      "updatedAt": "2026-05-30T08:24:19.018Z",
+      "date": "2026-05-12",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "Y0QSqZQAQQJkoze2utvU",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "date": "2026-05-05",
+      "updatedAt": "2026-05-30T09:43:48.407Z",
+      "status": "absent",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:43:48.022Z"
+    },
+    {
+      "id": "YzIN3ssfYgmEMJ2C04xf",
+      "staffId": "pXLglejPt3bOaw6RB87N",
+      "date": "2026-05-17",
+      "status": "present",
+      "updatedAt": "2026-05-30T08:24:20.933Z",
+      "createdAt": "2026-05-30T08:24:20.933Z",
+      "overtimeHours": 0
+    },
+    {
+      "id": "ZdmylIrW0YrOmoDqOp4g",
+      "status": "absent",
+      "updatedAt": "2026-05-30T08:24:23.751Z",
+      "createdAt": "2026-05-30T08:24:23.572Z",
+      "overtimeHours": 0,
+      "date": "2026-05-21",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "Zme0ADyokilaOrxjnByF",
+      "date": "2026-05-18",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:44:26.891Z",
+      "updatedAt": "2026-05-30T09:44:26.891Z",
+      "status": "present",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22"
+    },
+    {
+      "id": "b0TRe9F7G7Pzi8fWHy8a",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:29:29.604Z",
+      "updatedAt": "2026-05-30T09:29:29.954Z",
+      "status": "absent",
+      "date": "2026-05-12",
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "bO6vPwbQtTzNBSWtJEE9",
+      "staffId": "pXLglejPt3bOaw6RB87N",
+      "updatedAt": "2026-05-30T08:24:28.045Z",
+      "status": "present",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:28.045Z",
+      "date": "2026-05-26"
+    },
+    {
+      "id": "ccT715r97cX70aXtA17y",
+      "updatedAt": "2026-05-30T09:44:29.584Z",
+      "status": "present",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:44:29.584Z",
+      "date": "2026-05-24",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22"
+    },
+    {
+      "id": "cyMmUCyNAino9z1QrgeN",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "updatedAt": "2026-05-30T09:29:16.453Z",
+      "status": "present",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:29:16.453Z",
+      "date": "2026-05-04"
+    },
+    {
+      "id": "dnxs49QKx20OyPs5OXIB",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:44:30.183Z",
+      "updatedAt": "2026-05-30T09:44:30.183Z",
+      "status": "present",
+      "date": "2026-05-26",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22"
+    },
+    {
+      "id": "eGWJP2f8zczQ5Yb4zZLH",
+      "staffId": "pXLglejPt3bOaw6RB87N",
+      "date": "2026-05-19",
+      "updatedAt": "2026-05-30T08:24:22.408Z",
+      "status": "absent",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:22.183Z"
+    },
+    {
+      "id": "fhrUtW17GSjH6AGIeZx8",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "date": "2026-05-04",
+      "createdAt": "2026-05-30T09:43:47.116Z",
+      "overtimeHours": 0,
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:43:47.434Z"
+    },
+    {
+      "id": "hFRNQk7osqvzDTcE7MMu",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:18.740Z",
+      "updatedAt": "2026-05-30T08:24:18.740Z",
+      "status": "present",
+      "date": "2026-05-11",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "hHtPeRuXu3Fsx1frqNZ3",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "date": "2026-05-16",
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:44:25.199Z",
+      "createdAt": "2026-05-30T09:44:25.069Z",
+      "overtimeHours": 0
+    },
+    {
+      "id": "hbM4yolCtrOUOwrYlMen",
+      "staffId": "pXLglejPt3bOaw6RB87N",
+      "date": "2026-05-24",
+      "updatedAt": "2026-05-30T08:24:26.453Z",
+      "status": "absent",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:26.275Z"
+    },
+    {
+      "id": "hqbmPuoZCuBdPuDbsXGO",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "date": "2026-05-02",
+      "status": "present",
+      "updatedAt": "2026-05-30T09:29:15.519Z",
+      "createdAt": "2026-05-30T09:29:15.519Z",
+      "overtimeHours": 0
+    },
+    {
+      "id": "kgcfx6KtvI8AtsFmOD4y",
+      "updatedAt": "2026-05-30T09:29:16.199Z",
+      "status": "present",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:29:16.199Z",
+      "date": "2026-05-03",
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "lV0romxQg5J2bVBYdIS4",
+      "createdAt": "2026-05-30T09:29:36.033Z",
+      "overtimeHours": 0,
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:29:36.180Z",
+      "date": "2026-05-19",
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "lrmPYaySW5tCSQ7Ood9A",
+      "staffId": "pXLglejPt3bOaw6RB87N",
+      "date": "2026-05-10",
+      "status": "present",
+      "updatedAt": "2026-05-30T08:24:18.498Z",
+      "createdAt": "2026-05-30T08:24:18.498Z",
+      "overtimeHours": 0
+    },
+    {
+      "id": "m9ksaIQsmO9Zi9SDOX4i",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "createdAt": "2026-05-30T09:29:54.597Z",
+      "overtimeHours": 0,
+      "status": "present",
+      "updatedAt": "2026-05-30T09:29:54.597Z",
+      "date": "2026-05-27"
+    },
+    {
+      "id": "nsMkKLykyQIhB6zBPQ9f",
+      "staffId": "pXLglejPt3bOaw6RB87N",
+      "status": "present",
+      "updatedAt": "2026-05-30T08:24:17.679Z",
+      "createdAt": "2026-05-30T08:24:17.679Z",
+      "overtimeHours": 0,
+      "date": "2026-05-08"
+    },
+    {
+      "id": "nyFnW4XiWUl7wcqvDu6G",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:17.993Z",
+      "updatedAt": "2026-05-30T08:24:17.993Z",
+      "status": "present",
+      "date": "2026-05-09",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "oV6RC47wtJwlWIbHkc6S",
+      "date": "2026-05-23",
+      "updatedAt": "2026-05-30T08:24:25.553Z",
+      "status": "absent",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:25.110Z",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "orJgzuLD8qZRCQv9RWBJ",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "updatedAt": "2026-05-30T09:29:38.112Z",
+      "status": "absent",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:29:37.951Z",
+      "date": "2026-05-22"
+    },
+    {
+      "id": "p2aCQ90Qm60BAuqJD88W",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "status": "present",
+      "updatedAt": "2026-05-30T09:44:18.640Z",
+      "createdAt": "2026-05-30T09:44:18.640Z",
+      "overtimeHours": 0,
+      "date": "2026-05-14"
+    },
+    {
+      "id": "pB6e6L34sgkIy35Qyix8",
+      "staffId": "pXLglejPt3bOaw6RB87N",
+      "date": "2026-05-28",
+      "createdAt": "2026-05-30T08:24:28.691Z",
+      "overtimeHours": 0,
+      "status": "present",
+      "updatedAt": "2026-05-30T08:24:28.691Z"
+    },
+    {
+      "id": "pFK3KcFPVVUbVQ6evcPd",
+      "staffId": "pXLglejPt3bOaw6RB87N",
+      "updatedAt": "2026-05-30T08:24:13.966Z",
+      "status": "absent",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:13.630Z",
+      "date": "2026-05-03"
+    },
+    {
+      "id": "pVU5rIPE4pS7doy7ltYw",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "date": "2026-05-15",
+      "updatedAt": "2026-05-30T09:44:24.330Z",
+      "status": "present",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:44:24.330Z"
+    },
+    {
+      "id": "pjtt9Xi0kB5YMAnHgV8O",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "date": "2026-05-01",
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:43:44.356Z",
+      "createdAt": "2026-05-30T09:43:43.873Z",
+      "overtimeHours": 0
+    },
+    {
+      "id": "pm3kBVinuO6q4vFLQJ59",
+      "date": "2026-05-08",
+      "updatedAt": "2026-05-30T09:44:16.293Z",
+      "status": "present",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:44:16.293Z",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22"
+    },
+    {
+      "id": "pyGPynVQmJ6Oh9hNgGPI",
+      "date": "2026-05-23",
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:29:38.661Z",
+      "createdAt": "2026-05-30T09:29:38.551Z",
+      "overtimeHours": 0,
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    },
+    {
+      "id": "q1LNRvkQ4r9mKNMOkkDW",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "date": "2026-05-27",
+      "createdAt": "2026-05-30T09:44:30.977Z",
+      "overtimeHours": 0,
+      "status": "present",
+      "updatedAt": "2026-05-30T09:44:30.977Z"
+    },
+    {
+      "id": "qVkfeOmipd80kUoen20n",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "date": "2026-05-30",
+      "status": "present",
+      "updatedAt": "2026-05-30T09:29:58.292Z",
+      "createdAt": "2026-05-30T09:29:58.292Z",
+      "overtimeHours": 0
+    },
+    {
+      "id": "rOKyE9EwPSux4SFRYXOK",
+      "date": "2026-05-22",
+      "createdAt": "2026-05-30T08:24:24.260Z",
+      "overtimeHours": 0,
+      "status": "absent",
+      "updatedAt": "2026-05-30T08:24:24.421Z",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "rnJUxpyEq0uqYeNb0ZWb",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:29:30.930Z",
+      "createdAt": "2026-05-30T09:29:30.623Z",
+      "overtimeHours": 0,
+      "date": "2026-05-13"
+    },
+    {
+      "id": "thHmv4ydzV6V3RfrP3gn",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22",
+      "status": "present",
+      "updatedAt": "2026-05-30T09:44:29.866Z",
+      "createdAt": "2026-05-30T09:44:29.866Z",
+      "overtimeHours": 0,
+      "date": "2026-05-25"
+    },
+    {
+      "id": "tnktJcoiveA9tX2rc4yd",
+      "staffId": "Av27oAzhhap9Wn8T8aNF",
+      "date": "2026-05-11",
+      "updatedAt": "2026-05-30T09:29:27.916Z",
+      "status": "absent",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:29:27.417Z"
+    },
+    {
+      "id": "tvjkNfMsP0HWaEctxsTj",
+      "staffId": "pXLglejPt3bOaw6RB87N",
+      "createdAt": "2026-05-30T08:24:20.578Z",
+      "overtimeHours": 0,
+      "status": "present",
+      "updatedAt": "2026-05-30T08:24:20.578Z",
+      "date": "2026-05-16"
+    },
+    {
+      "id": "vHiaxrnP1cZeIHz6Imut",
+      "date": "2026-05-03",
+      "status": "absent",
+      "updatedAt": "2026-05-30T09:43:46.350Z",
+      "createdAt": "2026-05-30T09:43:46.121Z",
+      "overtimeHours": 0,
+      "staffId": "Mk4TN2FB67Ryof6Ecx22"
+    },
+    {
+      "id": "wehcPEiD7nXC4BTOx3GL",
+      "date": "2026-05-19",
+      "createdAt": "2026-05-30T09:44:27.147Z",
+      "overtimeHours": 0,
+      "status": "present",
+      "updatedAt": "2026-05-30T09:44:27.147Z",
+      "staffId": "Mk4TN2FB67Ryof6Ecx22"
+    },
+    {
+      "id": "xUPlTKFNKgpWbCP0HVv6",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T08:24:19.873Z",
+      "updatedAt": "2026-05-30T08:24:19.873Z",
+      "status": "present",
+      "date": "2026-05-15",
+      "staffId": "pXLglejPt3bOaw6RB87N"
+    },
+    {
+      "id": "xkzZlLu3nV9DyXxPQAp9",
+      "overtimeHours": 0,
+      "createdAt": "2026-05-30T09:29:57.015Z",
+      "updatedAt": "2026-05-30T09:29:57.015Z",
+      "status": "present",
+      "date": "2026-05-28",
+      "staffId": "Av27oAzhhap9Wn8T8aNF"
+    }
+  ],
+  "salaryRecords": [],
+  "salaryPayments": [],
+  "advanceRecords": [],
+  "leaveRecords": [],
+  "temporaryStaff": [],
+  "employee_ledger": [],
+  "settings": [
+    {
+      "id": "KBDsx9rDZat5gyW6SBbH",
+      "key": "shopName",
+      "value": "Kumar Ice Plaour"
+    },
+    {
+      "id": "PRBO2YSx9fokJ6txrqMy",
+      "value": "₹",
+      "key": "currency"
+    },
+    {
+      "id": "U76KOutZchAjWi0MvzQv",
+      "value": "[\"halwai\",\"head chef sweets\"]",
+      "key": "customRoles"
+    }
+  ]
+}
