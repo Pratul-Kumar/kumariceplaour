@@ -625,7 +625,7 @@ export function StaffProfile() {
         else if (att.status === "half_day") h++;
       });
       const { generateSalarySlip } = await import("@/services/pdf/generateSalarySlip");
-      generateSalarySlip(staff, record, recordPayments, { workingDays: w, presentDays: p, absentDays: a, leaveDays: 0, halfDays: h }, selectedPaymentId);
+      generateSalarySlip(staff, record, recordPayments, { workingDays: w, presentDays: p, absentDays: a, leaveDays: 0, halfDays: h }, undefined, selectedPaymentId);
     } catch {
       toast({ type: "error", title: "Could not generate slip", description: "Please try again." });
     }

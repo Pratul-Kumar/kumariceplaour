@@ -306,6 +306,7 @@ export interface LedgerEntry {
   note?: string;
   expenseId?: string;
   salaryRecordId?: string;
+  paymentMethod?: "cash" | "upi" | "bank" | "online" | "other";
   createdAt: string;
   updatedAt: string;
 }
@@ -325,6 +326,7 @@ export interface DueRecord {
   notes?: string;
   linkedSalaryId?: string;
   date?: string; // YYYY-MM-DD for sorting/display
+  paymentMethod?: "cash" | "upi" | "bank" | "online" | "other";
   createdAt: string;
   updatedAt: string;
   status: "active" | "settled" | "partial";

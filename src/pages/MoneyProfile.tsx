@@ -21,9 +21,10 @@ export function MoneyProfile() {
   // Modals
   const [modalType, setModalType] = useState<'advance' | 'add' | 'subtract' | 'receive' | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const { register, handleSubmit, reset } = useForm({
-    defaultValues: { amount: 0, note: '' }
+    defaultValues: { amount: 0, note: '', paymentMethod: 'cash', paymentDate: new Date().toISOString().split('T')[0] }
   });
 
   useEffect(() => {
@@ -63,8 +64,19 @@ export function MoneyProfile() {
   const balanceColor = balance === 0 ? 'text-muted-foreground' : isRecoverable ? 'text-amber-500' : 'text-emerald-500';
 
   const openModal = (type: 'advance' | 'add' | 'subtract' | 'receive') => {
-    reset({ amount: 0, note: '' });
+    reset({ amount: 0, note: '', paymentMethod: 'cash', paymentDate: new Date().toISOString().split('T')[0] });
     setModalType(type);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!id) return;
+    try {
+      await dueService.deleteEntry(id);
+      toast({ type: 'success', title: 'Deleted', description: 'History entry deleted successfully.' });
+    } catch (e: any) {
+      toast({ type: 'error', title: 'Error', description: e.message });
+    }
+    setDeleteConfirmId(null);
   };
 
   const onSubmit = async (data: any) => {
@@ -79,6 +91,8 @@ export function MoneyProfile() {
           amount: data.amount,
           remainingAmount: data.amount,
           notes: data.note || (modalType === 'advance' ? 'Advance Paid' : 'Money Added'),
+          date: data.paymentDate,
+          paymentMethod: data.paymentMethod
         });
         toast({ type: 'success', title: 'Success', description: `${formatCurrency(data.amount)} added to pending balance.` });
       } else if (modalType === 'receive' || modalType === 'subtract') {
@@ -89,6 +103,8 @@ export function MoneyProfile() {
           amount: data.amount,
           remainingAmount: data.amount,
           notes: data.note || (modalType === 'receive' ? 'Money Received' : 'Money Subtracted/Adjusted'),
+          date: data.paymentDate,
+          paymentMethod: data.paymentMethod
         });
         toast({ type: 'success', title: 'Success', description: `${formatCurrency(data.amount)} adjusted in balance.` });
       }
@@ -181,15 +197,22 @@ export function MoneyProfile() {
               const sign = isEmployeeToOwner ? '+' : '-';
               
               return (
-                <div key={due.id} className="p-4 bg-card border border-border rounded-2xl flex items-center justify-between gap-4 shadow-sm hover:shadow-md transition-shadow">
+                <div key={due.id} className="p-4 bg-card border border-border rounded-2xl flex items-center justify-between gap-4 shadow-sm hover:shadow-md transition-shadow relative group">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-foreground truncate">{due.notes || (isEmployeeToOwner ? 'Advance / Added' : 'Received / Adjusted')}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Calendar className="h-3 w-3 text-muted-foreground" />
-                      <p className="text-xs font-medium text-muted-foreground">{formatDate(due.createdAt)}</p>
+                    <div className="flex items-center gap-3 mt-2">
+                      <div className="flex items-center gap-1.5 bg-muted/50 px-2 py-0.5 rounded text-muted-foreground">
+                        <Calendar className="h-3 w-3" />
+                        <span className="text-[10px] font-medium">{formatDate(due.date || due.createdAt)}</span>
+                      </div>
+                      {due.paymentMethod && (
+                        <Badge variant="outline" className="text-[9px] uppercase font-bold tracking-wider text-primary border-primary/20 bg-primary/5">
+                          {due.paymentMethod}
+                        </Badge>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right flex flex-col items-end">
                     <p className={`text-lg font-bold tracking-tight ${color}`}>
                       {sign}{formatCurrency(due.amount)}
                     </p>
@@ -198,6 +221,13 @@ export function MoneyProfile() {
                         Salary Linked
                       </Badge>
                     )}
+                  </div>
+                  
+                  {/* Delete Button Hover */}
+                  <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-500 hover:bg-rose-500/10" onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(due.id!); }}>
+                      <Minus className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               );
@@ -217,6 +247,21 @@ export function MoneyProfile() {
             <label className="text-sm font-semibold text-foreground block mb-2">Amount (₹) *</label>
             <Input type="number" min={1} {...register('amount', { valueAsNumber: true })} className="text-lg h-12" placeholder="Enter amount..." autoFocus />
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-semibold text-foreground block mb-2">Date</label>
+              <Input type="date" {...register('paymentDate')} className="h-12" />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-foreground block mb-2">Method</label>
+              <select {...register('paymentMethod')} className="w-full h-12 rounded-lg border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+                <option value="cash">Cash</option>
+                <option value="online">Online</option>
+                <option value="upi">UPI</option>
+                <option value="bank">Bank Transfer</option>
+              </select>
+            </div>
+          </div>
           <div>
             <label className="text-sm font-semibold text-foreground block mb-2">Note (Optional)</label>
             <Input {...register('note')} className="h-12" placeholder="Why is this being added?" />
@@ -228,6 +273,17 @@ export function MoneyProfile() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal open={!!deleteConfirmId} onClose={() => setDeleteConfirmId(null)} title="Delete this history entry?">
+        <div className="pt-2 space-y-4">
+          <p className="text-sm text-muted-foreground">This action will rollback any balance changes associated with this entry. This cannot be undone.</p>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1 h-12" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+            <Button className="flex-1 h-12 bg-rose-500 hover:bg-rose-600 text-white" onClick={() => handleDelete(deleteConfirmId!)}>Delete Entry</Button>
+          </div>
+        </div>
       </Modal>
 
     </div>
