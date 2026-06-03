@@ -10,9 +10,15 @@ import {
 import { Button, Input, Card, CardContent, Badge, EmptyState, Spinner, Skeleton } from "@/components/ui";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { staffService, salaryService, attendanceService, advanceService } from "@/services";
-import { type Staff, type SalaryRecord, type SalaryPayment, type AdvanceRecord, calculateSalary } from "@/types";
+import { staffService, salaryService, attendanceService, advanceService, ledgerService } from "@/services";
+import { type Staff, type SalaryRecord, type SalaryPayment, type AdvanceRecord, type DueRecord, calculateSalary, calculateUnifiedSalary } from "@/types";
 import { formatCurrency, formatMonth, getCurrentMonth, formatDate } from "@/lib/utils";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/firebase/config";
+
+function mapDoc<T>(d: any): T {
+  return { id: d.id, ...d.data() } as T;
+}
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 const salarySchema = z.object({
@@ -23,6 +29,7 @@ const salarySchema = z.object({
   recoveryOption: z.enum(["full", "partial", "skip"]).default("full"),
   recoveryAmount: z.preprocess((v) => Number(v) || 0, z.number().min(0)).default(0),
   extraDeduction: z.preprocess((v) => Number(v) || 0, z.number().min(0)).default(0),
+  deductGiveMoney: z.boolean().default(false),
   note: z.string().optional(),
 });
 type SalaryFormData = z.infer<typeof salarySchema>;
@@ -69,14 +76,21 @@ function SalaryCard({
     return () => unsub();
   }, [record.id]);
 
+  const dynamicTotalPaid = payments.reduce((sum, p) => sum + p.amountPaid, 0);
   const totalDue = record.finalSalary + (record.previousDue || 0);
-  const paidPct  = totalDue > 0 ? Math.min(100, (record.totalPaid / totalDue) * 100) : 0;
+  const dynamicRemainingDue = Math.max(0, totalDue - dynamicTotalPaid);
+  
+  let computedStatus = "pending";
+  if (dynamicRemainingDue <= 0) computedStatus = "paid";
+  else if (dynamicTotalPaid > 0) computedStatus = "partial";
 
-  const statusColor = record.status === "paid"
+  const paidPct  = totalDue > 0 ? Math.min(100, (dynamicTotalPaid / totalDue) * 100) : (dynamicRemainingDue <= 0 ? 100 : 0);
+
+  const statusColor = computedStatus === "paid"
     ? "success"
-    : record.remainingDue < 0 
+    : dynamicRemainingDue < 0 
       ? "destructive"
-      : record.status === "partial"
+      : computedStatus === "partial"
         ? "warning"
         : "destructive";
 
@@ -93,7 +107,7 @@ function SalaryCard({
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="text-base font-bold text-foreground">{staffName}</p>
                 <Badge variant={statusColor} className="text-[10px] font-bold uppercase tracking-wide">
-                  {record.status}
+                  {computedStatus === "paid" ? "FULLY PAID" : computedStatus === "partial" ? "PARTIAL PAID" : "PENDING"}
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -101,7 +115,7 @@ function SalaryCard({
               </p>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              {record.status !== "paid" && (
+              {computedStatus !== "paid" && (
                 <Button
                   size="sm"
                   onClick={() => onPay(record)}
@@ -207,7 +221,7 @@ function SalaryCard({
                     >
                       {/* Timeline dot */}
                       <div className="relative flex flex-col items-center shrink-0">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-[#0B0F19] border border-glass-border ${record.status === "paid" && idx === 0 ? "shadow-[0_0_10px_rgba(16,185,129,0.3)] border-emerald-500/50" : ""}`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-[#0B0F19] border border-glass-border ${computedStatus === "paid" && idx === 0 ? "shadow-[0_0_10px_rgba(16,185,129,0.3)] border-emerald-500/50" : ""}`}>
                           <Icon className={`h-3.5 w-3.5 ${mi.color}`} />
                         </div>
                       </div>
@@ -258,6 +272,7 @@ export function SalaryManagement() {
   const [previewRollover, setPreviewRollover] = useState(0);
   const [previewIsCapped, setPreviewIsCapped] = useState(false);
   const [outstandingRecovery, setOutstandingRecovery] = useState(0);
+  const [giveMoneyBalance, setGiveMoneyBalance] = useState(0);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast } = useToast();
 
@@ -268,7 +283,7 @@ export function SalaryManagement() {
     formState: { errors: errGen },
   } = useForm<SalaryFormData>({
     resolver: zodResolver(salarySchema),
-    defaultValues: { month: getCurrentMonth(), bonus: 0, advance: 0, recoveryOption: "full", recoveryAmount: 0, extraDeduction: 0 },
+    defaultValues: { month: getCurrentMonth(), bonus: 0, advance: 0, recoveryOption: "full", recoveryAmount: 0, extraDeduction: 0, deductGiveMoney: false },
   });
 
   const {
@@ -312,6 +327,7 @@ export function SalaryManagement() {
       setPreviewActualDeduct(0);
       setPreviewRollover(0);
       setPreviewIsCapped(false);
+      setGiveMoneyBalance(0);
       return;
     }
     const staff = staffList.find(s => s.id === watchedStaffId);
@@ -328,6 +344,22 @@ export function SalaryManagement() {
         ]);
         const prevDue = lastUnpaid?.remainingDue || 0;
         const outstandingBalance = staff.outstandingBalance || 0;
+
+        // Fetch Give Money balance
+        const duesSnap = await getDocs(
+          query(
+            collection(db, "dues"),
+            where("staffId", "==", watchedStaffId),
+            where("type", "==", "EMPLOYEE_TO_OWNER"),
+            where("category", "==", "givetake")
+          )
+        );
+        const gBal = duesSnap.docs
+          .map(d => mapDoc(d) as DueRecord)
+          .filter(d => !d.isDeleted && d.processedInSalary !== true && (d.status === "active" || d.status === "partial"))
+          .reduce((sum, d) => sum + (d.remainingAmount || 0), 0);
+
+        setGiveMoneyBalance(gBal);
 
         // Calculate earnings before advance to get the max recoverable amount
         const earningsCalc = calculateSalary({
@@ -357,31 +389,62 @@ export function SalaryManagement() {
         const rolloverAmount = Math.max(0, outstandingBalance - actualDeductedAdvance);
         const isCapped = requestedAdvance > actualDeductedAdvance && requestedAdvance > 0;
 
-        const result = calculateSalary({
+        const deductGive = watchGen("deductGiveMoney") || false;
+
+        const baseCalc = calculateSalary({
           staff,
           attendanceRecords: attRecords,
           workingDaysInMonth: daysInMonth,
           bonus: Number(watchedBonus) || 0,
-          advance: actualDeductedAdvance,
+          advance: 0,
           extraDeduction: Number(watchedExtra) || 0,
         });
 
-        setPreviewCalc(result);
+        const unified = calculateUnifiedSalary({
+          generatedSalary: baseCalc.finalSalary,
+          previousDue: prevDue,
+          advanceDeduction: actualDeductedAdvance,
+          giveMoneyAmount: gBal,
+          deductGiveMoney: deductGive
+        });
+
+        const cleanBreakdown = baseCalc.breakdown.filter(b => !b.startsWith("Advance") && !b.startsWith("Extra Deduction") && !b.startsWith("Bonus"));
+        if (Number(watchedBonus) > 0) {
+          cleanBreakdown.push(`Bonus: +₹${Number(watchedBonus)}`);
+        }
+        if (Number(watchedExtra) > 0) {
+          cleanBreakdown.push(`Extra Deduction: -₹${Number(watchedExtra)}`);
+        }
+        if (actualDeductedAdvance > 0) {
+          cleanBreakdown.push(`Advance Deduction: -₹${actualDeductedAdvance}`);
+        }
+        if (gBal > 0) {
+          if (deductGive) {
+            cleanBreakdown.push(`Give Money Deduction: -₹${gBal}`);
+          } else {
+            cleanBreakdown.push(`Give Money Added: +₹${gBal}`);
+          }
+        }
+
+        baseCalc.breakdown = cleanBreakdown;
+        baseCalc.finalSalary = unified.finalPayable - prevDue;
+
+        setPreviewCalc(baseCalc);
         setPreviewDue(prevDue);
         setPreviewActualDeduct(actualDeductedAdvance);
         setPreviewRollover(rolloverAmount);
         setPreviewIsCapped(isCapped);
       } catch {
-        // Preview errors are non-critical — just clear it
         setPreviewCalc(null);
         setPreviewActualDeduct(0);
         setPreviewRollover(0);
         setPreviewIsCapped(false);
         setOutstandingRecovery(0);
+        setGiveMoneyBalance(0);
       }
     }, 400);
     return () => { if (previewTimer.current) clearTimeout(previewTimer.current); };
-  }, [watchedStaffId, watchedMonth, watchedBonus, watchedAdvance, watchedRecoveryOption, watchedRecoveryAmount, watchedExtra, staffList]);
+  }, [watchedStaffId, watchedMonth, watchedBonus, watchedAdvance, watchedRecoveryOption, watchedRecoveryAmount, watchedExtra, watchGen("deductGiveMoney"), staffList]);
 
   // ── Totals ──
   const { totalPaid, totalDue } = useMemo(() => ({
@@ -391,8 +454,8 @@ export function SalaryManagement() {
 
   // ── Handlers ──
   const openGenerate = useCallback(() => {
-    setPreviewCalc(null); setPreviewDue(0); setOutstandingRecovery(0);
-    resetGen({ month: filterMonth, bonus: 0, advance: 0, recoveryOption: "full", recoveryAmount: 0, extraDeduction: 0 });
+    setPreviewCalc(null); setPreviewDue(0); setOutstandingRecovery(0); setGiveMoneyBalance(0);
+    resetGen({ month: filterMonth, bonus: 0, advance: 0, recoveryOption: "full", recoveryAmount: 0, extraDeduction: 0, deductGiveMoney: false });
     setGenerateModalOpen(true);
   }, [filterMonth, resetGen]);
 
@@ -454,13 +517,23 @@ export function SalaryManagement() {
       const maxRecoverable = Math.max(0, earningsCalc.finalSalary);
       const actualDeductedAdvance = Math.min(requestedAdvance, maxRecoverable);
 
-      const calc = calculateSalary({
+      const deductGive = data.deductGiveMoney || false;
+
+      const baseCalc = calculateSalary({
         staff,
         attendanceRecords: attRecords,
         workingDaysInMonth: daysInMonth,
         bonus: data.bonus,
-        advance: actualDeductedAdvance,
+        advance: 0,
         extraDeduction: data.extraDeduction,
+      });
+
+      const unified = calculateUnifiedSalary({
+        generatedSalary: baseCalc.finalSalary,
+        previousDue: previousDue,
+        advanceDeduction: actualDeductedAdvance,
+        giveMoneyAmount: giveMoneyBalance,
+        deductGiveMoney: deductGive
       });
 
       const now = new Date().toISOString();
@@ -471,14 +544,17 @@ export function SalaryManagement() {
         baseSalary: staff.salaryType === "monthly" ? staff.monthlySalary : staff.dailyWage,
         bonus: data.bonus,
         advance: actualDeductedAdvance,
-        leaveDeduction: calc.leaveDeductionAmount,
+        giveMoneyDeducted: unified.giveMoneyDeducted,
+        giveMoneyAdded: unified.giveMoneyAdded,
+        deductGiveMoney: deductGive,
+        leaveDeduction: baseCalc.leaveDeductionAmount,
         extraDeduction: data.extraDeduction,
-        overtime: calc.overtimeAmount,
-        grossSalary: calc.finalSalary + actualDeductedAdvance,
-        finalSalary: calc.finalSalary,
+        overtime: baseCalc.overtimeAmount,
+        grossSalary: baseCalc.finalSalary + actualDeductedAdvance,
+        finalSalary: unified.finalPayable - previousDue,
         previousDue,
         totalPaid: 0,
-        remainingDue: calc.finalSalary + previousDue,
+        remainingDue: unified.finalPayable,
         status: "pending",
         note: data.note,
         updatedAt: now,
@@ -487,7 +563,7 @@ export function SalaryManagement() {
       toast({
         type: "success",
         title: "Salary Generated",
-        description: `${formatCurrency(calc.finalSalary + previousDue)} payable for ${staff.name}${previousDue > 0 ? ` (incl. ₹${previousDue} prev. due)` : ""}`,
+        description: `${formatCurrency(unified.finalPayable)} payable for ${staff.name}${previousDue > 0 ? ` (incl. ₹${previousDue} prev. due)` : ""}`,
       });
       setGenerateModalOpen(false);
     } catch (e: any) {
@@ -549,8 +625,9 @@ export function SalaryManagement() {
         else if (att.status === "absent") a++;
         else if (att.status === "half_day") h++;
       });
+      const ledgerEntries = await ledgerService.getByStaff(staff.id!);
       const { generateSalarySlip } = await import("@/services/pdf/generateSalarySlip");
-      generateSalarySlip(staff, record, payments, { workingDays: w, presentDays: p, absentDays: a, leaveDays: 0, halfDays: h });
+      generateSalarySlip(staff, record, payments, { workingDays: w, presentDays: p, absentDays: a, leaveDays: 0, halfDays: h }, ledgerEntries);
     } catch {
       toast({ type: "error", title: "Could not generate slip", description: "Try again." });
     }
@@ -769,6 +846,32 @@ export function SalaryManagement() {
               <label className="text-sm font-medium text-foreground block mb-1.5">Extra Deduction (₹)</label>
               <Input type="number" min={0} {...regGen("extraDeduction", { valueAsNumber: true })} placeholder="0" />
             </div>
+
+            {/* Give Money Deduction toggle */}
+            {giveMoneyBalance > 0 && (
+              <div className="col-span-2 flex items-center justify-between p-4 bg-purple-500/5 rounded-xl border border-purple-500/20">
+                <div className="flex-1 pr-4">
+                  <span className="text-sm font-bold text-purple-900 block">Deduct Give Money</span>
+                  <span className="text-xs text-purple-600">Available: {formatCurrency(giveMoneyBalance)}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentVal = watchGen("deductGiveMoney") || false;
+                    setGenValue("deductGiveMoney", !currentVal);
+                  }}
+                  className={`flex items-center w-11 h-6 p-1 rounded-full transition-colors duration-200 outline-none ${
+                    watchGen("deductGiveMoney") ? 'bg-purple-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${
+                      watchGen("deductGiveMoney") ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            )}
 
             {/* Note */}
             <div className="col-span-2">

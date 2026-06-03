@@ -2,14 +2,16 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Edit2, Trash2, User, Phone, Eye } from "lucide-react";
+import { Plus, Edit2, Trash2, Phone, ChevronDown, ChevronUp, IndianRupee, HandCoins, Wallet, Clock } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Input, Card, CardContent, Badge, EmptyState, Spinner, Skeleton } from "@/components/ui";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { staffService, settingsService } from "@/services";
-import { type Staff, STAFF_ROLES } from "@/types";
-import { formatCurrency, formatDate, getInitials, generateAvatarColor } from "@/lib/utils";
+import { staffService, settingsService, dueService } from "@/services";
+import { type Staff, STAFF_ROLES, type DueRecord, type SalaryRecord, type SalaryPayment } from "@/types";
+import { formatCurrency, formatDate, formatMonth, getInitials, generateAvatarColor } from "@/lib/utils";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/firebase/config";
 
 const staffSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -26,6 +28,137 @@ const staffSchema = z.object({
 
 type StaffFormData = z.infer<typeof staffSchema>;
 
+// ── Inline expanded history panel ─────────────────────────────────
+interface TItem {
+  sortKey: string; displayDate: string; icon: string;
+  label: string; sub?: string; amount: number; color: string; remaining?: number;
+}
+
+function ExpandedStaffPanel({ staffId }: { staffId: string }) {
+  const navigate = useNavigate();
+  const [dues,    setDues]    = useState<DueRecord[]>([]);
+  const [records, setRecords] = useState<SalaryRecord[]>([]);
+  const [payments,setPayments]= useState<SalaryPayment[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = dueService.subscribeByStaff(staffId, setDues);
+    return () => unsub();
+  }, [staffId]);
+
+  useEffect(() => {
+    const load = async () => {
+      const [sr, pr] = await Promise.all([
+        getDocs(query(collection(db, 'salaryRecords'),  where('staffId', '==', staffId))),
+        getDocs(query(collection(db, 'salaryPayments'), where('staffId', '==', staffId))),
+      ]);
+      setRecords( sr.docs.map(d => ({ id: d.id, ...d.data() } as SalaryRecord)));
+      setPayments(pr.docs.map(d => ({ id: d.id, ...d.data() } as SalaryPayment)));
+      setLoading(false);
+    };
+    load();
+  }, [staffId]);
+
+  const advanceTotal = dues
+    .filter(d => d.type === 'EMPLOYEE_TO_OWNER' && !d.isDeleted && (d.status === 'active' || d.status === 'partial'))
+    .reduce((s, d) => s + (d.remainingAmount || 0), 0);
+  const dueTotal = dues
+    .filter(d => d.type === 'OWNER_TO_EMPLOYEE' && !d.isDeleted && !d.linkedSalaryId && (d.status === 'active' || d.status === 'partial'))
+    .reduce((s, d) => s + (d.remainingAmount || 0), 0);
+  const pendingTotal = dues
+    .filter(d => d.type === 'OWNER_TO_EMPLOYEE' && !d.isDeleted && !!d.linkedSalaryId && (d.status === 'active' || d.status === 'partial'))
+    .reduce((s, d) => s + (d.remainingAmount || 0), 0);
+  const totalPaid = payments.reduce((s, p) => s + p.amountPaid, 0);
+
+  // Build timeline
+  const items: TItem[] = [];
+  records.forEach(r => {
+    const mo = `${r.year}-${String(r.month).padStart(2, '0')}`;
+    items.push({
+      sortKey: r.updatedAt || r.createdAt || '',
+      displayDate: formatDate(r.updatedAt || r.createdAt || ''),
+      icon: r.remainingDue > 0 ? '⏳' : '💰',
+      label: r.remainingDue > 0 ? 'Salary Pending' : 'Salary Paid',
+      sub: formatMonth(mo),
+      amount: r.totalPaid,
+      color: r.remainingDue > 0 ? 'text-rose-500' : 'text-emerald-500',
+      remaining: r.remainingDue > 0 ? r.remainingDue : undefined,
+    });
+  });
+  dues.filter(d => !d.isDeleted).forEach(d => {
+    const isAdv = d.type === 'EMPLOYEE_TO_OWNER';
+    items.push({
+      sortKey: d.date || d.createdAt || '',
+      displayDate: formatDate(d.date || d.createdAt || ''),
+      icon: isAdv ? '🤝' : d.linkedSalaryId ? '📌' : '📋',
+      label: isAdv ? 'Advance Given' : d.linkedSalaryId ? 'Pending Salary' : 'Due Added',
+      sub: d.notes,
+      amount: d.amount,
+      color: isAdv ? 'text-amber-500' : d.linkedSalaryId ? 'text-orange-500' : 'text-blue-500',
+      remaining: (d.remainingAmount ?? d.amount) !== d.amount ? (d.remainingAmount ?? d.amount) : undefined,
+    });
+  });
+  items.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+
+  return (
+    <div className="pt-4 border-t border-border mt-3">
+      {/* 4 Summary Cards */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="bg-emerald-500/10 rounded-xl p-2.5 text-center">
+          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Salary Paid</p>
+          <p className="text-sm font-bold text-emerald-500">{formatCurrency(totalPaid)}</p>
+        </div>
+        <div className="bg-amber-500/10 rounded-xl p-2.5 text-center">
+          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Advance</p>
+          <p className="text-sm font-bold text-amber-500">{formatCurrency(advanceTotal)}</p>
+        </div>
+        <div className="bg-blue-500/10 rounded-xl p-2.5 text-center">
+          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Due</p>
+          <p className="text-sm font-bold text-blue-500">{formatCurrency(dueTotal)}</p>
+        </div>
+        <div className="bg-rose-500/10 rounded-xl p-2.5 text-center">
+          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Pending</p>
+          <p className="text-sm font-bold text-rose-500">{formatCurrency(pendingTotal)}</p>
+        </div>
+      </div>
+
+      {/* Quick links */}
+      <div className="flex justify-between mb-3">
+        <button onClick={() => navigate(`/salary/${staffId}`)} className="text-[11px] font-semibold text-indigo-500 hover:underline">→ Salary</button>
+        <button onClick={() => navigate(`/money/${staffId}`)}  className="text-[11px] font-semibold text-indigo-500 hover:underline">Advance / Due →</button>
+      </div>
+
+      {/* Timeline */}
+      {loading ? (
+        <p className="text-[11px] text-center text-muted-foreground py-2">Loading...</p>
+      ) : items.length === 0 ? (
+        <p className="text-[11px] text-center text-muted-foreground py-3">No history yet.</p>
+      ) : (
+        <div className="space-y-0">
+          {items.map((t, i) => (
+            <div key={i} className="flex items-start justify-between gap-2 py-2 border-b border-border/40 last:border-0">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1">
+                  <span className="text-xs">{t.icon}</span>
+                  <span className="text-xs font-semibold text-foreground">{t.label}</span>
+                  {t.sub && <span className="text-[10px] text-muted-foreground truncate">{t.sub}</span>}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{t.displayDate}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className={`text-xs font-bold ${t.color}`}>{formatCurrency(t.amount)}</p>
+                {t.remaining !== undefined && (
+                  <p className="text-[9px] text-muted-foreground">Rem: {formatCurrency(t.remaining)}</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function StaffManagement() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +170,7 @@ export function StaffManagement() {
   const [filterRole, setFilterRole] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [customRoles, setCustomRoles] = useState<string[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -154,7 +288,7 @@ export function StaffManagement() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground">
-            {mode === "salary" ? "Select Staff for Salary" : mode === "money" ? "Select Staff for Money" : "Staff Management"}
+          {mode === "salary" ? "Select Staff for Salary" : mode === "money" ? "Select Staff for Money" : mode === "history" ? "Select Staff to View History" : "Staff Management"}
           </h1>
           <p className="text-sm text-muted-foreground">{staff.filter((s) => s.status === "active").length} active members</p>
         </div>
@@ -185,7 +319,13 @@ export function StaffManagement() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
           {filtered.map((s) => (
-            <Card key={s.id} className="group overflow-hidden">
+            <Card
+              key={s.id}
+              className={`overflow-hidden transition-shadow duration-200 cursor-pointer hover:shadow-md ${
+                expandedId === s.id ? 'ring-2 ring-indigo-500/30' : ''
+              }`}
+              onClick={() => !mode && setExpandedId(prev => prev === s.id ? null : s.id!)}
+            >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-3.5">
                   <div className="flex items-center gap-3">
@@ -197,9 +337,16 @@ export function StaffManagement() {
                       <p className="text-[11px] text-muted-foreground capitalize mt-0.5">{s.role}</p>
                     </div>
                   </div>
-                  <Badge variant={s.status === "active" ? "success" : "secondary"} className="cursor-pointer" onClick={() => toggleStatus(s)}>
-                    {s.status}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={s.status === "active" ? "success" : "secondary"} className="cursor-pointer" onClick={(e) => { e.stopPropagation(); toggleStatus(s); }}>
+                      {s.status}
+                    </Badge>
+                    {!mode && (
+                      expandedId === s.id
+                        ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                        : <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-1.5 text-xs mb-4">
@@ -221,22 +368,30 @@ export function StaffManagement() {
                 </div>
 
                 {mode ? (
-                  <Button variant="default" size="sm" className="w-full h-9" onClick={() => navigate(`/${mode}/${s.id}`)}>
+                  <Button variant="default" size="sm" className="w-full h-9" onClick={(e) => { e.stopPropagation(); navigate(`/${mode}/${s.id}`); }}>
                     Select
                   </Button>
                 ) : (
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="flex-1 gap-1.5 h-9" onClick={() => navigate(`/staff/${s.id}`)}>
-                      <Eye className="h-3.5 w-3.5" /> View
-                    </Button>
-                    <Button variant="secondary" size="sm" className="flex-1 gap-1.5 h-9" onClick={() => openEdit(s)}>
+                  <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                    <Button variant="secondary" size="sm" className="flex-1 gap-1.5 h-8" onClick={() => openEdit(s)}>
                       <Edit2 className="h-3.5 w-3.5" /> Edit
                     </Button>
-                    <button onClick={() => setDeleteId(s.id!)} className="p-2.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors">
+                    <button onClick={() => setDeleteId(s.id!)} className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 )}
+
+                <div
+                  style={{
+                    maxHeight: expandedId === s.id ? '1200px' : '0px',
+                    opacity: expandedId === s.id ? 1 : 0,
+                    overflow: 'hidden',
+                    transition: 'max-height 0.35s ease, opacity 0.25s ease',
+                  }}
+                >
+                  {expandedId === s.id && <ExpandedStaffPanel staffId={s.id!} />}
+                </div>
               </CardContent>
             </Card>
           ))}

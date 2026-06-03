@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Search, Edit2, Trash2, Download, Receipt, TrendingDown, TrendingUp, Filter } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+
 import {
   Button, Input, Select, Card, CardContent, CardHeader, CardTitle,
   Badge, EmptyState, Spinner, Skeleton
@@ -25,18 +25,7 @@ const expenseSchema = z.object({
 
 type ExpenseFormData = z.infer<typeof expenseSchema>;
 
-const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { value: number, payload: any }[]; label?: string }) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-card/95 backdrop-blur-xl border border-glass-border rounded-xl p-3 shadow-2xl min-w-[120px]">
-      <div className="flex items-center gap-2 mb-1">
-        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: payload[0].payload.color }} />
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
-      </div>
-      <p className="text-xl font-bold text-foreground">{formatCurrency(payload[0].value)}</p>
-    </div>
-  );
-};
+
 
 export function ExpenseManagement() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -183,13 +172,7 @@ export function ExpenseManagement() {
     toast({ type: "success", title: "Exported to Excel" });
   };
 
-  const chartData = Object.entries(categoryTotals)
-    .sort(([, a], [, b]) => b - a)
-    .map(([cat, amt]) => ({
-      name: getCategoryInfo(cat as ExpenseCategory).label.split(" ")[0],
-      amount: amt,
-      color: getCategoryInfo(cat as ExpenseCategory).color,
-    }));
+
 
   return (
     <div className="space-y-6 pb-24 lg:pb-8">
@@ -226,34 +209,11 @@ export function ExpenseManagement() {
         </Button>
       </div>
 
-      {/* 2. ANALYTICS HERO */}
-      {!loading && chartData.length > 0 && (
-        <Card className="glass-card relative overflow-hidden border-glass-border shadow-2xl">
-          <div className="absolute top-0 right-0 p-6 flex flex-col items-end pointer-events-none">
-             <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Total Spends</p>
+      {!loading && (
+        <Card className="glass-card relative overflow-hidden border-glass-border shadow-2xl mb-6">
+          <CardContent className="p-6 flex flex-col items-start gap-1">
+             <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Total Spends</p>
              <p className="text-3xl font-black text-foreground drop-shadow-md">{formatCurrency(monthTotal)}</p>
-          </div>
-          <CardHeader className="pb-0">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <TrendingDown className="h-4 w-4 text-primary" /> Expense Analytics
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6 pb-2">
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--glass-bg)" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} dy={10} />
-                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--glass-bg)' }} />
-                <Area type="monotone" dataKey="amount" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorAmount)" activeDot={{ r: 6, fill: "#6366f1", stroke: "#fff", strokeWidth: 2 }} />
-              </AreaChart>
-            </ResponsiveContainer>
           </CardContent>
         </Card>
       )}

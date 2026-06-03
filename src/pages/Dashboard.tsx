@@ -41,7 +41,7 @@ export function Dashboard() {
             </Card>
           );
         })}
-      </div>an
+      </div>
     </div>
   );
 }

@@ -71,6 +71,10 @@ export interface SalaryRecord {
   leaveDeduction: number;
   extraDeduction: number;
   advance: number;
+  giveMoneyDeducted?: number;
+  giveMoneyAdded?: number;
+  deductGiveMoney?: boolean;
+  giveMoneyIds?: string[];
   previousDue: number;
   finalSalary: number;
   totalPaid: number;
@@ -283,6 +287,59 @@ export function calculateSalary(input: SalaryCalculationInput): SalaryCalculatio
   }
 }
 
+export interface UnifiedSalaryInput {
+  generatedSalary: number;   // base + overtime + bonus - leave - extraDeduction
+  previousDue: number;       // OWNER_TO_EMPLOYEE due money
+  advanceDeduction: number;  // EMPLOYEE_TO_OWNER advance deducted
+  giveMoneyAmount: number;   // active unprocessed Give Money balance
+  deductGiveMoney: boolean;  // whether to deduct or add
+}
+
+export interface UnifiedSalaryResult {
+  finalPayable: number;
+  giveMoneyDeducted: number;
+  giveMoneyAdded: number;
+  breakdown: string[];
+}
+
+export function calculateUnifiedSalary(input: UnifiedSalaryInput): UnifiedSalaryResult {
+  const { generatedSalary, previousDue, advanceDeduction, giveMoneyAmount, deductGiveMoney } = input;
+  
+  let giveMoneyDeducted = 0;
+  let giveMoneyAdded = 0;
+  let finalPayable = 0;
+  const breakdown: string[] = [];
+
+  if (deductGiveMoney) {
+    giveMoneyDeducted = giveMoneyAmount;
+    finalPayable = Math.max(0, generatedSalary + previousDue - advanceDeduction - giveMoneyAmount);
+  } else {
+    giveMoneyAdded = giveMoneyAmount;
+    finalPayable = Math.max(0, generatedSalary + previousDue - advanceDeduction + giveMoneyAmount);
+  }
+
+  breakdown.push(`Generated Salary: ₹${generatedSalary.toLocaleString()}`);
+  if (previousDue > 0) breakdown.push(`Previous Due: +₹${previousDue.toLocaleString()}`);
+  if (advanceDeduction > 0) breakdown.push(`Advance Deduction: -₹${advanceDeduction.toLocaleString()}`);
+  
+  if (deductGiveMoney) {
+    if (giveMoneyDeducted > 0) {
+      breakdown.push(`Give Money Deduction: -₹${giveMoneyDeducted.toLocaleString()}`);
+    }
+  } else {
+    if (giveMoneyAdded > 0) {
+      breakdown.push(`Give Money Added: +₹${giveMoneyAdded.toLocaleString()}`);
+    }
+  }
+
+  return {
+    finalPayable,
+    giveMoneyDeducted,
+    giveMoneyAdded,
+    breakdown
+  };
+}
+
 // ============================================================
 // EMPLOYEE FINANCIAL LEDGER
 // ============================================================
@@ -322,6 +379,7 @@ export interface DueRecord {
   amount: number;
   remainingAmount: number;
   type: DueType;
+  category?: "advance" | "due" | "givetake";
   reason?: string;
   notes?: string;
   linkedSalaryId?: string;
@@ -331,5 +389,6 @@ export interface DueRecord {
   updatedAt: string;
   status: "active" | "settled" | "partial";
   isDeleted?: boolean;
+  processedInSalary?: boolean;
 }
 

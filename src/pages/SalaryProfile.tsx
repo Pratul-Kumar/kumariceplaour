@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, IndianRupee, HandCoins, Wallet, Clock, Calculator, History, CheckCircle2, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { ArrowLeft, IndianRupee, HandCoins, Wallet, Clock, Calculator, History, CheckCircle2, SlidersHorizontal, Trash2, Coins, CalendarCheck } from 'lucide-react';
 import { Card, CardContent, Button, Input, Skeleton, Spinner, Badge } from '@/components/ui';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
-import { staffService, attendanceService, salaryService, ledgerService } from '@/services';
-import { type Staff, calculateSalary, type SalaryRecord, type Attendance, type SalaryPayment } from '@/types';
+import { staffService, attendanceService, salaryService, ledgerService, dueService } from '@/services';
+import { type Staff, calculateSalary, type SalaryRecord, type Attendance, type SalaryPayment, type DueRecord, calculateUnifiedSalary } from '@/types';
 import { formatCurrency, getCurrentMonth, formatMonth, generateAvatarColor, getInitials } from '@/lib/utils';
 import { useForm } from 'react-hook-form';
 
@@ -24,6 +24,8 @@ export function SalaryProfile() {
   
   const [records, setRecords] = useState<SalaryRecord[]>([]);
   const [salaryPayments, setSalaryPayments] = useState<SalaryPayment[]>([]);
+  // Raw dues for correct separate balance computation
+  const [dues, setDues] = useState<DueRecord[]>([]);
 
   // Adjustment modal state
   const [showAdjustModal, setShowAdjustModal] = useState(false);
@@ -34,7 +36,12 @@ export function SalaryProfile() {
   // Confirmed values carried into payment modal
   const [confirmedDue, setConfirmedDue] = useState(0);
   const [confirmedAdvance, setConfirmedAdvance] = useState(0);
+  const [confirmedGiveMoney, setConfirmedGiveMoney] = useState(0);
   const [confirmedFinal, setConfirmedFinal] = useState(0);
+
+  const [deductGiveMoney, setDeductGiveMoney] = useState(false);
+  const [adjDeductGiveMoney, setAdjDeductGiveMoney] = useState(false);
+  const [adjGiveMoneyAmount, setAdjGiveMoneyAmount] = useState(0);
 
   // Payment modal
   const [paymentType, setPaymentType] = useState<'full' | 'partial' | 'remaining' | null>(null);
@@ -53,7 +60,8 @@ export function SalaryProfile() {
   useEffect(() => {
     if (!id) return;
     const unsubStaff = staffService.subscribeById(id, setStaff);
-    return () => unsubStaff();
+    const unsubDues  = dueService.subscribeByStaff(id, setDues);
+    return () => { unsubStaff(); unsubDues(); };
   }, [id]);
 
   useEffect(() => {
@@ -112,16 +120,37 @@ export function SalaryProfile() {
 
   if (!staff) return <div className="p-8 text-center text-muted-foreground">Staff not found.</div>;
 
-  const outstandingBalance = staff.outstandingBalance || 0;
-  const advanceSalary = outstandingBalance > 0 ? outstandingBalance : 0;
-  const dueMoney = outstandingBalance < 0 ? Math.abs(outstandingBalance) : 0;
+  // ── Compute advance, due, and givetake SEPARATELY from the raw dues collection.
+  // Never use the combined outstandingBalance — it mixes both sides.
+  const advanceSalary = dues
+    .filter(d => d.type === 'EMPLOYEE_TO_OWNER' && d.category !== 'givetake' && !d.isDeleted && (d.status === 'active' || d.status === 'partial'))
+    .reduce((sum, d) => sum + (d.remainingAmount || 0), 0);
+
+  const dueMoney = dues
+    .filter(d => d.type === 'OWNER_TO_EMPLOYEE' && d.category !== 'givetake' && !d.isDeleted && !d.linkedSalaryId && (d.status === 'active' || d.status === 'partial'))
+    .reduce((sum, d) => sum + (d.remainingAmount || 0), 0);
+
+  const giveMoneyBalance = dues
+    .filter(d => d.type === 'EMPLOYEE_TO_OWNER' && d.category === 'givetake' && !d.isDeleted && d.processedInSalary !== true && (d.status === 'active' || d.status === 'partial'))
+    .reduce((sum, d) => sum + (d.remainingAmount || 0), 0);
 
   const currentRecord = records[0]; // If there's a record for this month
   const isGenerated = !!currentRecord;
 
   const grossPayable = calculatedSalary + dueMoney;
   const actualDeduct = Math.min(advanceSalary, grossPayable);
-  const finalPayableCalc = grossPayable - actualDeduct;
+
+  const unifiedResult = calculateUnifiedSalary({
+    generatedSalary: calculatedSalary,
+    previousDue: dueMoney,
+    advanceDeduction: actualDeduct,
+    giveMoneyAmount: giveMoneyBalance,
+    deductGiveMoney: deductGiveMoney
+  });
+
+  const giveMoneyDeducted = unifiedResult.giveMoneyDeducted;
+  const giveMoneyAdded = unifiedResult.giveMoneyAdded;
+  const finalPayableCalc = unifiedResult.finalPayable;
 
   const openPaymentModal = (type: 'full' | 'partial' | 'remaining') => {
     setPaymentType(type);
@@ -140,6 +169,8 @@ export function SalaryProfile() {
     setAdjDueAmount(dueMoney);
     setAdjDeductAdvance(advanceSalary > 0);
     setAdjAdvanceAmount(Math.min(advanceSalary, calculatedSalary + dueMoney));
+    setAdjDeductGiveMoney(deductGiveMoney && giveMoneyBalance > 0);
+    setAdjGiveMoneyAmount(giveMoneyBalance);
     setShowAdjustModal(true);
   };
 
@@ -147,14 +178,22 @@ export function SalaryProfile() {
   const confirmAdjustments = (type: 'full' | 'partial') => {
     const addedDue = adjAddDue ? Math.min(adjDueAmount, dueMoney) : 0;
     const deductedAdv = adjDeductAdvance ? Math.min(adjAdvanceAmount, advanceSalary) : 0;
-    const gross = calculatedSalary + addedDue;
-    const final = Math.max(0, gross - deductedAdv);
+    
+    const unified = calculateUnifiedSalary({
+      generatedSalary: calculatedSalary,
+      previousDue: addedDue,
+      advanceDeduction: deductedAdv,
+      giveMoneyAmount: giveMoneyBalance,
+      deductGiveMoney: adjDeductGiveMoney
+    });
+
     setConfirmedDue(addedDue);
     setConfirmedAdvance(deductedAdv);
-    setConfirmedFinal(final);
+    setConfirmedGiveMoney(unified.giveMoneyDeducted);
+    setConfirmedFinal(unified.finalPayable);
     setShowAdjustModal(false);
     setPaymentType(type);
-    setValue('amount', type === 'full' ? final : 0);
+    setValue('amount', type === 'full' ? unified.finalPayable : 0);
   };
 
   const handleDeleteSalary = async () => {
@@ -165,9 +204,10 @@ export function SalaryProfile() {
       setSalaryPayments([]);
       setConfirmedDue(0);
       setConfirmedAdvance(0);
+      setConfirmedGiveMoney(0);
       setConfirmedFinal(0);
       setShowDeleteConfirm(false);
-      toast({ type: 'success', title: 'Salary Deleted', description: 'Salary record removed. Advance & due balances restored.' });
+      toast({ type: 'success', title: 'Salary Deleted', description: 'Salary record removed. Advance, due & extra balances restored.' });
     } catch (err: any) {
       toast({ type: 'error', title: 'Delete Failed', description: err.message });
     } finally {
@@ -228,6 +268,7 @@ export function SalaryProfile() {
       // Use confirmed adjustment amounts if set, else fall back to auto values
       const usedDue     = confirmedFinal > 0 ? confirmedDue     : dueMoney;
       const usedAdvance = confirmedFinal > 0 ? confirmedAdvance : actualDeduct;
+      const usedGiveMoney = confirmedFinal > 0 ? confirmedGiveMoney : giveMoneyDeducted;
       const actualPayable = confirmedFinal > 0 ? confirmedFinal : finalPayableCalc;
       const paymentAmount = paymentType === 'full' ? actualPayable : data.amount;
 
@@ -242,6 +283,8 @@ export function SalaryProfile() {
         baseSalary: staff.salaryType === 'monthly' ? staff.monthlySalary : staff.dailyWage,
         bonus: data.bonus || 0,
         advance: usedAdvance,
+        giveMoneyDeducted: usedGiveMoney,
+        deductGiveMoney: confirmedFinal > 0 ? adjDeductGiveMoney : deductGiveMoney,
         leaveDeduction: 0,
         extraDeduction: 0,
         overtime: 0,
@@ -251,7 +294,7 @@ export function SalaryProfile() {
         totalPaid: 0,
         remainingDue: Math.max(0, actualPayable - paymentAmount),
         status: 'pending',
-        note: data.note || (paymentType === 'full' ? 'Full Settlement' : 'Partial Settlement'),
+        note: data.note || (paymentType === 'full' ? 'Full Payment' : 'Partial Payment'),
         updatedAt: new Date().toISOString(),
       } as any, [], paymentAmount > 0 ? {
         amountPaid: paymentAmount,
@@ -263,6 +306,7 @@ export function SalaryProfile() {
       // Reset confirmed values for next use
       setConfirmedDue(0);
       setConfirmedAdvance(0);
+      setConfirmedGiveMoney(0);
       setConfirmedFinal(0);
 
       toast({ type: 'success', title: 'Salary Processed', description: 'Salary processed and recorded successfully. Generating slip...' });
@@ -350,34 +394,41 @@ export function SalaryProfile() {
         </div>
       </div>
 
-      {/* 4 Essential Cards */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* 5 Essential Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Card className="glass-card border-none bg-gradient-to-br from-blue-500/10 to-indigo-500/5">
-          <CardContent className="p-5 text-center">
-            <IndianRupee className="h-6 w-6 text-blue-500 mx-auto mb-2 opacity-80" />
-            <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Generated Salary</p>
-            <p className="text-2xl font-bold text-blue-500">{formatCurrency(calculatedSalary)}</p>
+          <CardContent className="p-4 text-center">
+            <IndianRupee className="h-5 w-5 text-blue-500 mx-auto mb-1.5 opacity-80" />
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Generated Salary</p>
+            <p className="text-lg font-bold text-blue-500">{formatCurrency(calculatedSalary)}</p>
           </CardContent>
         </Card>
         <Card className="glass-card border-none bg-gradient-to-br from-amber-500/10 to-orange-500/5">
-          <CardContent className="p-5 text-center">
-            <HandCoins className="h-6 w-6 text-amber-500 mx-auto mb-2 opacity-80" />
-            <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Advance Salary</p>
-            <p className="text-2xl font-bold text-amber-500">{formatCurrency(advanceSalary)}</p>
+          <CardContent className="p-4 text-center">
+            <HandCoins className="h-5 w-5 text-amber-500 mx-auto mb-1.5 opacity-80" />
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Advance Salary</p>
+            <p className="text-lg font-bold text-amber-500">{formatCurrency(advanceSalary)}</p>
           </CardContent>
         </Card>
         <Card className="glass-card border-none bg-gradient-to-br from-emerald-500/10 to-teal-500/5">
-          <CardContent className="p-5 text-center">
-            <Wallet className="h-6 w-6 text-emerald-500 mx-auto mb-2 opacity-80" />
-            <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Due Money</p>
-            <p className="text-2xl font-bold text-emerald-500">{formatCurrency(dueMoney)}</p>
+          <CardContent className="p-4 text-center">
+            <Wallet className="h-5 w-5 text-emerald-500 mx-auto mb-1.5 opacity-80" />
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Due Money</p>
+            <p className="text-lg font-bold text-emerald-500">{formatCurrency(dueMoney)}</p>
           </CardContent>
         </Card>
-        <Card className="glass-card border-none bg-gradient-to-br from-purple-500/10 to-fuchsia-500/5">
-          <CardContent className="p-5 text-center">
-            <Clock className="h-6 w-6 text-purple-500 mx-auto mb-2 opacity-80" />
-            <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Present Days</p>
-            <p className="text-2xl font-bold text-purple-500">{presentDays} <span className="text-sm font-medium text-muted-foreground">/ {workingDays}</span></p>
+        <Card className="glass-card border-none bg-gradient-to-br from-purple-500/10 to-pink-500/5">
+          <CardContent className="p-4 text-center">
+            <Coins className="h-5 w-5 text-purple-500 mx-auto mb-1.5 opacity-80" />
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Give/Take Money</p>
+            <p className="text-lg font-bold text-purple-500">{formatCurrency(giveMoneyBalance)}</p>
+          </CardContent>
+        </Card>
+        <Card className="glass-card border-none bg-gradient-to-br from-slate-500/10 to-slate-500/5 col-span-2 md:col-span-1">
+          <CardContent className="p-4 text-center">
+            <CalendarCheck className="h-5 w-5 text-slate-500 mx-auto mb-1.5 opacity-80" />
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Present Days</p>
+            <p className="text-lg font-bold text-slate-600 dark:text-slate-300">{presentDays} <span className="text-xs font-normal text-muted-foreground">/ {workingDays}</span></p>
           </CardContent>
         </Card>
       </div>
@@ -458,14 +509,24 @@ export function SalaryProfile() {
               </div>
               {dueMoney > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Previous Due Available</span>
+                  <span className="text-muted-foreground">Previous Due</span>
                   <span className="font-semibold text-emerald-500">+{formatCurrency(dueMoney)}</span>
                 </div>
               )}
               {advanceSalary > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Advance Available</span>
-                  <span className="font-semibold text-amber-500">{formatCurrency(advanceSalary)}</span>
+                  <span className="text-muted-foreground">Advance Deduction</span>
+                  <span className="font-semibold text-rose-500">-{formatCurrency(actualDeduct)}</span>
+                </div>
+              )}
+              {giveMoneyBalance > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    {deductGiveMoney ? "Give Money Deduction" : "Give Money Added"}
+                  </span>
+                  <span className={`font-semibold ${deductGiveMoney ? 'text-rose-500' : 'text-purple-500'}`}>
+                    {deductGiveMoney ? "-" : "+"}{formatCurrency(giveMoneyBalance)}
+                  </span>
                 </div>
               )}
               <div className="pt-2 border-t border-border flex justify-between items-center">
@@ -473,6 +534,28 @@ export function SalaryProfile() {
                 <span className="text-xl font-bold text-indigo-500">{formatCurrency(finalPayableCalc)}</span>
               </div>
             </div>
+
+            {giveMoneyBalance > 0 && (
+              <div className="flex items-center justify-between mb-5 p-4 bg-purple-500/5 rounded-xl border border-purple-500/20">
+                <div className="flex-1 pr-4">
+                  <span className="text-sm font-bold text-purple-900 block">Deduct Give Money</span>
+                  <span className="text-xs text-purple-600">Available: {formatCurrency(giveMoneyBalance)}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDeductGiveMoney(v => !v)}
+                  className={`flex items-center w-11 h-6 p-1 rounded-full transition-colors duration-200 outline-none ${
+                    deductGiveMoney ? 'bg-purple-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${
+                      deductGiveMoney ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            )}
 
             <Button
               onClick={openAdjustModal}
@@ -532,16 +615,24 @@ export function SalaryProfile() {
           {dueMoney > 0 && (
             <div className="rounded-xl border border-border p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <div>
+                <div className="flex-1 pr-4">
                   <p className="text-sm font-bold text-foreground">Add Previous Due</p>
-                  <p className="text-xs text-muted-foreground">Available: {formatCurrency(dueMoney)}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Available: {formatCurrency(dueMoney)}</p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setAdjAddDue(v => !v)}
-                  className={`w-12 h-6 rounded-full transition-colors relative ${adjAddDue ? 'bg-emerald-500' : 'bg-muted'}`}
+                  onClick={() => {
+                    setAdjAddDue(v => {
+                      const next = !v;
+                      if (next && adjDueAmount === 0) {
+                        setAdjDueAmount(dueMoney);
+                      }
+                      return next;
+                    });
+                  }}
+                  className={`flex items-center w-11 h-6 p-1 rounded-full transition-colors duration-200 outline-none ${adjAddDue ? 'bg-emerald-600' : 'bg-gray-300'}`}
                 >
-                  <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${adjAddDue ? 'translate-x-7' : 'translate-x-1'}`} />
+                  <span className={`w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${adjAddDue ? 'translate-x-5' : 'translate-x-0'}`} />
                 </button>
               </div>
               {adjAddDue && (
@@ -564,16 +655,24 @@ export function SalaryProfile() {
           {advanceSalary > 0 && (
             <div className="rounded-xl border border-border p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <div>
+                <div className="flex-1 pr-4">
                   <p className="text-sm font-bold text-foreground">Deduct Advance</p>
-                  <p className="text-xs text-muted-foreground">Available: {formatCurrency(advanceSalary)}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Available: {formatCurrency(advanceSalary)}</p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setAdjDeductAdvance(v => !v)}
-                  className={`w-12 h-6 rounded-full transition-colors relative ${adjDeductAdvance ? 'bg-amber-500' : 'bg-muted'}`}
+                  onClick={() => {
+                    setAdjDeductAdvance(v => {
+                      const next = !v;
+                      if (next && adjAdvanceAmount === 0) {
+                        setAdjAdvanceAmount(Math.min(advanceSalary, calculatedSalary + dueMoney));
+                      }
+                      return next;
+                    });
+                  }}
+                  className={`flex items-center w-11 h-6 p-1 rounded-full transition-colors duration-200 outline-none ${adjDeductAdvance ? 'bg-amber-600' : 'bg-gray-300'}`}
                 >
-                  <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${adjDeductAdvance ? 'translate-x-7' : 'translate-x-1'}`} />
+                  <span className={`w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${adjDeductAdvance ? 'translate-x-5' : 'translate-x-0'}`} />
                 </button>
               </div>
               {adjDeductAdvance && (
@@ -592,35 +691,77 @@ export function SalaryProfile() {
             </div>
           )}
 
+          {/* Give/Take Money Deduction section */}
+          {giveMoneyBalance > 0 && (
+            <div className="rounded-xl border border-border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex-1 pr-4">
+                  <p className="text-sm font-bold text-purple-900">Deduct Give Money</p>
+                  <p className="text-xs text-purple-600 mt-0.5">Available: {formatCurrency(giveMoneyBalance)}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAdjDeductGiveMoney(v => !v)}
+                  className={`flex items-center w-11 h-6 p-1 rounded-full transition-colors duration-200 outline-none ${adjDeductGiveMoney ? 'bg-purple-600' : 'bg-gray-300'}`}
+                >
+                  <span className={`w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${adjDeductGiveMoney ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Live Final Summary */}
           <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-4 space-y-2">
             <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-2">Live Summary</p>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Generated Salary</span>
-              <span className="font-semibold">{formatCurrency(calculatedSalary)}</span>
-            </div>
-            {adjAddDue && adjDueAmount > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">+ Previous Due</span>
-                <span className="font-semibold text-emerald-500">+{formatCurrency(adjDueAmount)}</span>
-              </div>
-            )}
-            {adjDeductAdvance && adjAdvanceAmount > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">- Advance Deduction</span>
-                <span className="font-semibold text-rose-500">-{formatCurrency(adjAdvanceAmount)}</span>
-              </div>
-            )}
-            <div className="pt-2 border-t border-indigo-500/20 flex justify-between items-center">
-              <span className="font-bold text-foreground text-xs uppercase tracking-widest">Final Payable</span>
-              <span className="text-xl font-extrabold text-indigo-500">
-                {formatCurrency(Math.max(0,
-                  calculatedSalary
-                  + (adjAddDue ? adjDueAmount : 0)
-                  - (adjDeductAdvance ? adjAdvanceAmount : 0)
-                ))}
-              </span>
-            </div>
+            {(() => {
+              const addedDue = adjAddDue ? Math.min(adjDueAmount, dueMoney) : 0;
+              const deductedAdv = adjDeductAdvance ? Math.min(adjAdvanceAmount, advanceSalary) : 0;
+              
+              const unified = calculateUnifiedSalary({
+                generatedSalary: calculatedSalary,
+                previousDue: addedDue,
+                advanceDeduction: deductedAdv,
+                giveMoneyAmount: giveMoneyBalance,
+                deductGiveMoney: adjDeductGiveMoney
+              });
+
+              return (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Generated Salary</span>
+                    <span className="font-semibold">{formatCurrency(calculatedSalary)}</span>
+                  </div>
+                  {adjAddDue && addedDue > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">+ Previous Due</span>
+                      <span className="font-semibold text-emerald-500">+{formatCurrency(addedDue)}</span>
+                    </div>
+                  )}
+                  {adjDeductAdvance && deductedAdv > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">- Advance Deduction</span>
+                      <span className="font-semibold text-rose-500">-{formatCurrency(deductedAdv)}</span>
+                    </div>
+                  )}
+                  {giveMoneyBalance > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        {adjDeductGiveMoney ? "Give Money Deduction" : "Give Money Added"}
+                      </span>
+                      <span className={`font-semibold ${adjDeductGiveMoney ? 'text-rose-500' : 'text-purple-500'}`}>
+                        {adjDeductGiveMoney ? "-" : "+"}{formatCurrency(giveMoneyBalance)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="pt-2 border-t border-indigo-500/20 flex justify-between items-center">
+                    <span className="font-bold text-foreground text-xs uppercase tracking-widest">Final Payable</span>
+                    <span className="text-xl font-extrabold text-indigo-500">
+                      {formatCurrency(unified.finalPayable)}
+                    </span>
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           {/* Action Buttons */}

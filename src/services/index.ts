@@ -492,11 +492,17 @@ export const salaryService = {
     const duesCol = collection(db, "dues");
     const q = query(duesCol, where("staffId", "==", data.staffId), where("type", "==", "EMPLOYEE_TO_OWNER"));
     const duesSnap = await getDocs(q);
-    const activeEmployeeDuesList = duesSnap.docs
+    const allActiveDues = duesSnap.docs
       .map(d => mapDoc<DueRecord>(d))
-      .filter(d => !d.isDeleted && (d.status === "active" || d.status === "partial"));
-    activeEmployeeDuesList.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    const activeEmployeeDueRefs = activeEmployeeDuesList.map(d => doc(db, "dues", d.id!));
+      .filter(d => !d.isDeleted && d.processedInSalary !== true && (d.status === "active" || d.status === "partial"));
+    allActiveDues.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+    // Split them:
+    const activeAdvances = allActiveDues.filter(d => d.category !== "givetake");
+    const activeGiveMoneys = allActiveDues.filter(d => d.category === "givetake");
+
+    const activeAdvanceRefs = activeAdvances.map(d => doc(db, "dues", d.id!));
+    const activeGiveMoneyRefs = activeGiveMoneys.map(d => doc(db, "dues", d.id!));
 
     await runTransaction(db, async (tx) => {
       // ====================================
@@ -506,10 +512,18 @@ export const salaryService = {
       if (!staffSnap.exists()) throw new Error("Staff member not found");
 
       const activeEmployeeDues: { ref: any, data: DueRecord }[] = [];
-      for (const ref of activeEmployeeDueRefs) {
+      for (const ref of activeAdvanceRefs) {
         const dSnap = await tx.get(ref);
         if (dSnap.exists()) {
           activeEmployeeDues.push({ ref, data: mapDoc<DueRecord>(dSnap) });
+        }
+      }
+
+      const activeGiveMoneysList: { ref: any, data: DueRecord }[] = [];
+      for (const ref of activeGiveMoneyRefs) {
+        const dSnap = await tx.get(ref);
+        if (dSnap.exists()) {
+          activeGiveMoneysList.push({ ref, data: mapDoc<DueRecord>(dSnap) });
         }
       }
 
@@ -525,6 +539,7 @@ export const salaryService = {
       // ====================================
       // 3. ALL WRITES
       // ====================================
+      // Recover standard advances
       for (const due of activeEmployeeDues) {
         if (remainingToRecover <= 0) break;
         const dueRef = due.ref;
@@ -538,10 +553,27 @@ export const salaryService = {
         remainingToRecover -= deducted;
       }
 
+      // Settle Give Money entries (always set remainingAmount = 0, status = settled, processedInSalary = true)
+      const giveMoneyIds = activeGiveMoneysList.map(g => g.data.id!);
+      const giveMoneySettled = activeGiveMoneysList.reduce((sum, g) => sum + (g.data.remainingAmount || 0), 0);
+
+      for (const due of activeGiveMoneysList) {
+        const dueRef = due.ref;
+        tx.update(dueRef, {
+          remainingAmount: 0,
+          status: "settled",
+          processedInSalary: true,
+          updatedAt: now
+        });
+      }
+
       // 2. Generate Salary Record
       const salaryRef = doc(salaryCol);
       tx.set(salaryRef, {
         ...data,
+        giveMoneyDeducted: data.deductGiveMoney ? giveMoneySettled : 0,
+        giveMoneyAdded: !data.deductGiveMoney ? giveMoneySettled : 0,
+        giveMoneyIds,
         grossSalary: (data as any).grossSalary || (data.baseSalary + data.overtime + data.bonus - data.extraDeduction - data.leaveDeduction),
         outstandingBefore: currentBal,
         recoveredAmount,
@@ -549,7 +581,7 @@ export const salaryService = {
         updatedAt: now
       });
 
-      // 3. Ledger Recovery Entry
+      // 3. Ledger Recovery Entry for Advance
       if (recoveredAmount > 0) {
         const recoveryLedgerRef = doc(collection(db, "employee_ledger"));
         tx.set(recoveryLedgerRef, {
@@ -558,7 +590,23 @@ export const salaryService = {
           amount: recoveredAmount,
           date: now.split("T")[0],
           month: `${data.year}-${String(data.month).padStart(2, "0")}`,
-          note: `Auto-recovery in salary month ${data.year}-${String(data.month).padStart(2, "0")}`,
+          note: `Advance Deducted: ₹${recoveredAmount}`,
+          salaryRecordId: salaryRef.id,
+          createdAt: now,
+          updatedAt: now
+        });
+      }
+
+      // Ledger Recovery Entry for Give Money
+      if (data.deductGiveMoney && giveMoneySettled > 0) {
+        const recoveryLedgerRef = doc(collection(db, "employee_ledger"));
+        tx.set(recoveryLedgerRef, {
+          staffId: data.staffId,
+          type: "salary_recovery",
+          amount: giveMoneySettled,
+          date: now.split("T")[0],
+          month: `${data.year}-${String(data.month).padStart(2, "0")}`,
+          note: `Give Money Deducted: ₹${giveMoneySettled}`,
           salaryRecordId: salaryRef.id,
           createdAt: now,
           updatedAt: now
@@ -573,30 +621,27 @@ export const salaryService = {
         amount: data.finalSalary,
         date: now.split("T")[0],
         month: `${data.year}-${String(data.month).padStart(2, "0")}`,
-        note: `Salary generated for ${data.year}-${String(data.month).padStart(2, "0")}`,
+        note: `Salary generated for month ${data.year}-${String(data.month).padStart(2, "0")}`,
         salaryRecordId: salaryRef.id,
         createdAt: now,
         updatedAt: now
       });
 
-      // 4. Handle remaining unpaid salary as OWNER_TO_EMPLOYEE due
-      const paymentAmount = payment ? payment.amountPaid : 0;
-      const totalDue = data.finalSalary + (data.previousDue || 0) - recoveredAmount;
-      const remainingDue = Math.max(0, totalDue - paymentAmount);
-
+      // 4. Handle Dues creation (if salary is pending or partially paid)
+      const remainingDue = data.remainingDue;
       if (remainingDue > 0) {
-        const remainingDueRef = doc(duesCol);
-        tx.set(remainingDueRef, {
+        const linkedDueRef = doc(duesCol);
+        tx.set(linkedDueRef, {
           staffId: data.staffId,
           amount: remainingDue,
           remainingAmount: remainingDue,
           type: "OWNER_TO_EMPLOYEE",
-          reason: `Unpaid salary remaining for ${data.year}-${String(data.month).padStart(2, "0")}`,
+          status: "active",
           linkedSalaryId: salaryRef.id,
           date: now.split("T")[0],
+          notes: `Salary pending for month ${data.year}-${String(data.month).padStart(2, "0")}`,
           createdAt: now,
-          updatedAt: now,
-          status: "active"
+          updatedAt: now
         });
 
         const dueLedgerRef = doc(collection(db, "employee_ledger"));
@@ -606,15 +651,16 @@ export const salaryService = {
           amount: remainingDue,
           date: now.split("T")[0],
           month: `${data.year}-${String(data.month).padStart(2, "0")}`,
-          note: `Salary Remaining Added To Due: ₹${remainingDue}`,
+          note: `Salary pending: ₹${remainingDue}`,
           salaryRecordId: salaryRef.id,
           createdAt: now,
           updatedAt: now
         });
       }
 
-      // 5. Handle initial payment if any
-      if (paymentAmount > 0 && payment) {
+      // 5. If immediate payment was made
+      if (payment && payment.amountPaid > 0) {
+        const paymentAmount = payment.amountPaid;
         const paymentRef = doc(salaryPaymentsCol);
         tx.set(paymentRef, {
           salaryRecordId: salaryRef.id,
@@ -622,7 +668,7 @@ export const salaryService = {
           amountPaid: paymentAmount,
           paymentDate: payment.paymentDate,
           paymentMethod: payment.paymentMethod,
-          note: payment.note || "",
+          note: payment.note || `Salary payment for ${data.year}-${String(data.month).padStart(2, "0")}`,
           createdAt: now
         });
 
@@ -653,7 +699,7 @@ export const salaryService = {
       }
 
       // 6. Recalculate net balance and update staff
-      const newBal = currentBal - recoveredAmount - remainingDue;
+      const newBal = currentBal - recoveredAmount - giveMoneySettled - remainingDue;
       tx.update(staffRef, {
         outstandingBalance: newBal,
         updatedAt: now
@@ -667,6 +713,7 @@ export const salaryService = {
   deleteRecord: async (id: string) => {
     const paymentsSnap = await getDocs(query(salaryPaymentsCol, where("salaryRecordId", "==", id)));
     const paymentRefs = paymentsSnap.docs.map(d => d.ref);
+    const payments = paymentsSnap.docs.map(d => d.data() as SalaryPayment);
 
     const ledgerSnap = await getDocs(query(collection(db, "employee_ledger"), where("salaryRecordId", "==", id)));
     const ledgerRefs = ledgerSnap.docs.map(d => d.ref);
@@ -686,6 +733,9 @@ export const salaryService = {
     const employeeDuesSnap = await getDocs(query(duesCol, where("staffId", "==", staffId), where("type", "==", "EMPLOYEE_TO_OWNER")));
     const employeeDueRefs = employeeDuesSnap.docs.map(d => d.ref);
 
+    // Get potential matching expenses for salary payments
+    const expensesSnap = await getDocs(query(collection(db, "expenses"), where("staffId", "==", staffId), where("category", "==", "salary")));
+
     await runTransaction(db, async (tx) => {
       // ====================================
       // 1. ALL READS
@@ -695,12 +745,15 @@ export const salaryService = {
 
       const record = recordSnap.data() as SalaryRecord;
       const recovered = record.advance || 0;
+      const giveMoneyDeducted = record.giveMoneyDeducted || 0;
+      const giveMoneyAdded = record.giveMoneyAdded || 0;
+      const giveMoneyProcessed = giveMoneyDeducted + giveMoneyAdded;
       
       const staffRef = doc(db, "staff", record.staffId);
       const staffSnap = await tx.get(staffRef);
 
       const employeeDuesData: { ref: any, data: DueRecord }[] = [];
-      if (recovered > 0) {
+      if (recovered > 0 || giveMoneyProcessed > 0 || (record.giveMoneyIds && record.giveMoneyIds.length > 0)) {
         for (const ref of employeeDueRefs) {
           const dSnap = await tx.get(ref);
           if (dSnap.exists()) {
@@ -721,9 +774,9 @@ export const salaryService = {
       // 3. ALL WRITES / DELETES / UPDATES
       // ====================================
       if (staffSnap.exists()) {
-        // Restore recovered EMPLOYEE_TO_OWNER dues
+        // Restore recovered EMPLOYEE_TO_OWNER dues (advances)
         if (recovered > 0) {
-          const employeeDues = employeeDuesData.map(d => d.data).filter(d => !d.isDeleted && d.amount > d.remainingAmount);
+          const employeeDues = employeeDuesData.map(d => d.data).filter(d => !d.isDeleted && d.category !== "givetake" && d.amount > d.remainingAmount);
           employeeDues.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
           
           let remainingToRestore = recovered;
@@ -741,11 +794,72 @@ export const salaryService = {
           }
         }
 
+        // Restore Give Money entries (either using giveMoneyIds or chronological fallback)
+        if (record.giveMoneyIds && record.giveMoneyIds.length > 0) {
+          for (const dueId of record.giveMoneyIds) {
+            const match = employeeDuesData.find(d => d.data.id === dueId);
+            if (match) {
+              tx.update(match.ref, {
+                remainingAmount: match.data.amount,
+                status: "active",
+                processedInSalary: false,
+                updatedAt: now
+              });
+            } else {
+              // Directly update if not pre-fetched in employeeDuesData
+              const directRef = doc(db, "dues", dueId);
+              const directSnap = await tx.get(directRef);
+              if (directSnap.exists()) {
+                const directData = directSnap.data() as DueRecord;
+                tx.update(directRef, {
+                  remainingAmount: directData.amount,
+                  status: "active",
+                  processedInSalary: false,
+                  updatedAt: now
+                });
+              }
+            }
+          }
+        } else if (giveMoneyProcessed > 0) {
+          // Fallback chronological restoration
+          const giveMoneyDues = employeeDuesData.map(d => d.data).filter(d => !d.isDeleted && d.category === "givetake" && d.amount > d.remainingAmount);
+          giveMoneyDues.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+          let remainingToRestore = giveMoneyProcessed;
+          for (const due of giveMoneyDues) {
+            if (remainingToRestore <= 0) break;
+            const dueRef = employeeDuesData.find(d => d.data.id === due.id)!.ref;
+            const space = due.amount - due.remainingAmount;
+            const toRestore = Math.min(remainingToRestore, space);
+            tx.update(dueRef, {
+              remainingAmount: due.remainingAmount + toRestore,
+              status: due.remainingAmount + toRestore >= due.amount ? "active" : "partial",
+              processedInSalary: false,
+              updatedAt: now
+            });
+            remainingToRestore -= toRestore;
+          }
+        }
+
         // Update Staff balance
         tx.update(staffRef, {
-          outstandingBalance: currentBal + recovered + (record.remainingDue || 0),
+          outstandingBalance: currentBal + recovered + giveMoneyProcessed + (record.remainingDue || 0),
           updatedAt: now
         });
+      }
+
+      // Find matching expenses and delete them
+      const expenseRefsToDelete: any[] = [];
+      const remainingExpenses = expensesSnap.docs.map(d => ({ ref: d.ref, data: d.data() }));
+      for (const p of payments) {
+        const matchIdx = remainingExpenses.findIndex(e => e.data.amount === p.amountPaid && e.data.date === p.paymentDate);
+        if (matchIdx !== -1) {
+          expenseRefsToDelete.push(remainingExpenses[matchIdx].ref);
+          remainingExpenses.splice(matchIdx, 1);
+        }
+      }
+      for (const expRef of expenseRefsToDelete) {
+        tx.delete(expRef);
       }
 
       // Delete dues linked to salary
@@ -880,12 +994,46 @@ export const salaryService = {
 
   deletePayment: async (paymentId: string) => {
     const payRef = doc(salaryPaymentsCol, paymentId);
+    const paySnap = await getDoc(payRef);
+    if (!paySnap.exists()) throw new Error("Payment not found");
+    const payData = paySnap.data() as SalaryPayment;
+
+    // 1. Query matching ledger entry
+    const ledgerSnap = await getDocs(
+      query(
+        collection(db, "employee_ledger"),
+        where("salaryRecordId", "==", payData.salaryRecordId),
+        where("type", "==", "salary_paid"),
+        where("amount", "==", payData.amountPaid),
+        where("staffId", "==", payData.staffId)
+      )
+    );
+    const ledgerRef = ledgerSnap.docs.length > 0 ? ledgerSnap.docs[0].ref : null;
+
+    // 2. Query matching expense document
+    const expenseSnap = await getDocs(
+      query(
+        collection(db, "expenses"),
+        where("staffId", "==", payData.staffId),
+        where("category", "==", "salary"),
+        where("amount", "==", payData.amountPaid),
+        where("date", "==", payData.paymentDate)
+      )
+    );
+    const expenseRef = expenseSnap.docs.length > 0 ? expenseSnap.docs[0].ref : null;
+
+    // 3. Query linked OWNER_TO_EMPLOYEE dues (unpaid salary dues)
+    const duesSnap = await getDocs(
+      query(
+        collection(db, "dues"),
+        where("linkedSalaryId", "==", payData.salaryRecordId),
+        where("type", "==", "OWNER_TO_EMPLOYEE")
+      )
+    );
+    const activeLinkedDuesRefs = duesSnap.docs.map(d => d.ref);
+
     await runTransaction(db, async (tx) => {
       // ====== ALL READS FIRST ======
-      const paySnap = await tx.get(payRef);
-      if (!paySnap.exists()) throw new Error("Payment not found");
-      const payData = paySnap.data() as SalaryPayment;
-
       const recordRef = doc(db, "salaryRecords", payData.salaryRecordId);
       const staffRef  = doc(db, "staff", payData.staffId);
 
@@ -893,6 +1041,14 @@ export const salaryService = {
         tx.get(recordRef),
         tx.get(staffRef),
       ]);
+
+      const activeLinkedDuesData: { ref: any, data: DueRecord }[] = [];
+      for (const ref of activeLinkedDuesRefs) {
+        const dSnap = await tx.get(ref);
+        if (dSnap.exists()) {
+          activeLinkedDuesData.push({ ref, data: mapDoc<DueRecord>(dSnap) });
+        }
+      }
 
       // ====== ALL WRITES AFTER ======
       if (recordSnap.exists()) {
@@ -906,10 +1062,32 @@ export const salaryService = {
 
       if (staffSnap.exists()) {
         const staff = staffSnap.data() as Staff;
+        // Restoring payment moves outstandingBalance back (payment adds to balance, deleting it subtracts)
         tx.update(staffRef, { outstandingBalance: (staff.outstandingBalance || 0) - payData.amountPaid, updatedAt: new Date().toISOString() });
       }
 
+      // Restore remainingAmount on the linked OWNER_TO_EMPLOYEE dues
+      let remainingToRestore = payData.amountPaid;
+      const sortedDues = activeLinkedDuesData.map(d => d.data).filter(d => !d.isDeleted && d.amount > d.remainingAmount);
+      // Sort descending by createdAt to restore newest first
+      sortedDues.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+      for (const due of sortedDues) {
+        if (remainingToRestore <= 0) break;
+        const dueRef = activeLinkedDuesData.find(d => d.data.id === due.id)!.ref;
+        const space = due.amount - due.remainingAmount;
+        const toRestore = Math.min(remainingToRestore, space);
+        tx.update(dueRef, {
+          remainingAmount: due.remainingAmount + toRestore,
+          status: due.remainingAmount + toRestore >= due.amount ? "active" : "partial",
+          updatedAt: new Date().toISOString()
+        });
+        remainingToRestore -= toRestore;
+      }
+
       tx.delete(payRef);
+      if (ledgerRef) tx.delete(ledgerRef);
+      if (expenseRef) tx.delete(expenseRef);
     });
   }
 };
@@ -1074,6 +1252,25 @@ export const dueService = {
     const now = new Date().toISOString();
     const staffRef = doc(db, "staff", data.staffId);
     
+    // Symmetrical chronological settlement for givetake dues
+    let activeOppositeRefs: any[] = [];
+    if (data.category === "givetake") {
+      const oppositeType = data.type === "EMPLOYEE_TO_OWNER" ? "OWNER_TO_EMPLOYEE" : "EMPLOYEE_TO_OWNER";
+      const duesSnap = await getDocs(
+        query(
+          duesCol,
+          where("staffId", "==", data.staffId),
+          where("category", "==", "givetake"),
+          where("type", "==", oppositeType)
+        )
+      );
+      const activeOpposites = duesSnap.docs
+        .map(d => mapDoc<DueRecord>(d))
+        .filter(d => !d.isDeleted && (d.status === "active" || d.status === "partial"));
+      activeOpposites.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      activeOppositeRefs = activeOpposites.map(d => doc(db, "dues", d.id!));
+    }
+
     await runTransaction(db, async (tx) => {
       const staffSnap = await tx.get(staffRef);
       if (!staffSnap.exists()) throw new Error("Staff member not found");
@@ -1084,24 +1281,49 @@ export const dueService = {
       // EMPLOYEE_TO_OWNER is positive debt, OWNER_TO_EMPLOYEE is negative debt
       const diff = data.type === "EMPLOYEE_TO_OWNER" ? data.amount : -data.amount;
       const newBal = currentBal + diff;
+
+      let remainingAmount = data.amount;
+
+      // Read opposite dues inside transaction
+      const fetchedOpposites: { ref: any, data: DueRecord }[] = [];
+      for (const ref of activeOppositeRefs) {
+        const snap = await tx.get(ref);
+        if (snap.exists()) {
+          fetchedOpposites.push({ ref, data: mapDoc<DueRecord>(snap) });
+        }
+      }
+
+      // Settle chronologically
+      for (const opp of fetchedOpposites) {
+        if (remainingAmount <= 0) break;
+        const deduct = Math.min(remainingAmount, opp.data.remainingAmount);
+        const newOppRem = opp.data.remainingAmount - deduct;
+        tx.update(opp.ref, {
+          remainingAmount: newOppRem,
+          status: newOppRem <= 0 ? "settled" : "partial",
+          updatedAt: now
+        });
+        remainingAmount -= deduct;
+      }
       
       const dueRef = doc(duesCol);
       tx.set(dueRef, {
         ...data,
-        status: "active",
+        remainingAmount,
+        status: remainingAmount <= 0 ? "settled" : "active",
         createdAt: now,
         updatedAt: now
       });
       
       const ledgerRef = doc(collection(db, "employee_ledger"));
-      const ledgerType = data.type === "EMPLOYEE_TO_OWNER" ? "salary_advance" : "manual_adjustment";
+      const ledgerType = data.type === "EMPLOYEE_TO_OWNER" ? "salary_advance" : "manual_repayment";
       tx.set(ledgerRef, {
         staffId: data.staffId,
         type: ledgerType,
         amount: data.amount,
         date: data.date || now.split("T")[0],
         month: (data.date || now.split("T")[0]).slice(0, 7),
-        note: data.reason || (data.type === "EMPLOYEE_TO_OWNER" ? "Due Created (Employee to Owner)" : "Due Created (Owner to Employee)"),
+        note: data.notes || data.reason || (data.type === "EMPLOYEE_TO_OWNER" ? "Give Money" : "Take Money"),
         createdAt: now,
         updatedAt: now
       });
@@ -1115,11 +1337,24 @@ export const dueService = {
 
   deleteEntry: async (dueId: string) => {
     const dueRef = doc(duesCol, dueId);
+    const dueSnap = await getDoc(dueRef);
+    if (!dueSnap.exists()) throw new Error("Due not found");
+    const dueData = dueSnap.data() as DueRecord;
+
+    const ledgerType = dueData.type === "EMPLOYEE_TO_OWNER" ? "salary_advance" : "manual_repayment";
+    const ledgerDate = dueData.date || dueData.createdAt.split("T")[0];
+    const ledgerSnap = await getDocs(
+      query(
+        collection(db, "employee_ledger"),
+        where("staffId", "==", dueData.staffId),
+        where("type", "==", ledgerType),
+        where("amount", "==", dueData.amount),
+        where("date", "==", ledgerDate)
+      )
+    );
+    const ledgerRef = ledgerSnap.docs.length > 0 ? ledgerSnap.docs[0].ref : null;
+
     await runTransaction(db, async (tx) => {
-      const dueSnap = await tx.get(dueRef);
-      if (!dueSnap.exists()) throw new Error("Due not found");
-      const dueData = dueSnap.data() as DueRecord;
-      
       const staffRef = doc(db, "staff", dueData.staffId);
       const staffSnap = await tx.get(staffRef);
       if (staffSnap.exists()) {
@@ -1130,6 +1365,9 @@ export const dueService = {
       }
       
       tx.update(dueRef, { isDeleted: true, updatedAt: new Date().toISOString() });
+      if (ledgerRef) {
+        tx.delete(ledgerRef);
+      }
     });
   },
 
@@ -1233,7 +1471,7 @@ export const dueService = {
               amountPaid: toDeduct,
               paymentDate: date,
               paymentMethod: method,
-              note: notes || "Due settlement payment",
+              note: notes || "Due payment",
               createdAt: now
             });
           }
@@ -1259,11 +1497,11 @@ export const dueService = {
       if (type === "OWNER_TO_EMPLOYEE") {
         const expenseRef = doc(collection(db, "expenses"));
         tx.set(expenseRef, {
-          title: `Salary Payment (Due Settle)`,
+          title: `Salary Payment (Due Paid)`,
           amount: amount,
           category: "salary",
           date,
-          note: notes || "Due Settle",
+          note: notes || "Due Paid",
           staffId,
           createdAt: now,
           updatedAt: now

@@ -160,7 +160,7 @@ export function AttendanceManagement() {
   const lockedStaffIds = useMemo(() => {
     const set = new Set<string>();
     salaries.forEach(s => {
-      if (s.status === "paid" || s.isLocked) set.add(s.staffId);
+      set.add(s.staffId);
     });
     return set;
   }, [salaries]);
@@ -187,7 +187,7 @@ export function AttendanceManagement() {
   // Handlers with strict Date Normalization and Race Condition protection
   const handleCellClick = useCallback(async (staffId: string, rawDate: string, currentStatus?: AttendanceStatus) => {
     if (lockedStaffIds.has(staffId)) {
-      toast({ type: "error", title: "Locked", description: "Attendance cannot be edited after salary is finalized or paid." });
+      toast({ type: "error", title: "Locked", description: "Attendance cannot be edited after salary is generated." });
       return;
     }
     
@@ -220,7 +220,7 @@ export function AttendanceManagement() {
 
   const setExactStatus = useCallback(async (staffId: string, rawDate: string, status: AttendanceStatus | "clear") => {
     if (lockedStaffIds.has(staffId)) {
-      toast({ type: "error", title: "Locked", description: "Attendance cannot be edited after salary is finalized or paid." });
+      toast({ type: "error", title: "Locked", description: "Attendance cannot be edited after salary is generated." });
       return;
     }
 
@@ -270,11 +270,11 @@ export function AttendanceManagement() {
 
   return (
     <div className="space-y-4 pb-28 lg:pb-6">
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Attendance</h1>
-        <p className="text-sm text-muted-foreground mt-0.5 hidden md:block">
-          Click any cell to cycle through statuses
-        </p>
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h1 className="text-xl font-bold text-foreground">Attendance</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Click cells to cycle through statuses</p>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3">
