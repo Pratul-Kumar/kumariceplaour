@@ -63,8 +63,12 @@ export function MoneyProfile() {
     .filter(d => (d.category === 'due' || (d.type === 'OWNER_TO_EMPLOYEE' && !d.category)) && !d.isDeleted && (d.status === 'active' || d.status === 'partial'))
     .reduce((sum, d) => sum + (d.remainingAmount || 0), 0);
 
-  const giveTakeTotal = dues
+  const giveMoneyTotal = dues
     .filter(d => d.category === 'givetake' && d.type === 'EMPLOYEE_TO_OWNER' && !d.isDeleted && (d.status === 'active' || d.status === 'partial'))
+    .reduce((sum, d) => sum + (d.remainingAmount || 0), 0);
+
+  const takeMoneyTotal = dues
+    .filter(d => d.category === 'givetake' && d.type === 'OWNER_TO_EMPLOYEE' && !d.isDeleted && (d.status === 'active' || d.status === 'partial'))
     .reduce((sum, d) => sum + (d.remainingAmount || 0), 0);
 
   const openModal = (type: 'advance' | 'add' | 'subtract' | 'receive') => {
@@ -166,14 +170,14 @@ export function MoneyProfile() {
         </div>
       </div>
 
-      {/* Three Separate Balance Cards */}
-      <div className="grid grid-cols-3 gap-2">
+      {/* Four Separate Balance Cards */}
+      <div className="grid grid-cols-2 gap-2">
         <Card className="glass-card border-none bg-gradient-to-br from-amber-500/10 to-orange-500/5">
           <CardContent className="p-3 text-center">
             <HandCoins className="h-5 w-5 text-amber-500 mx-auto mb-1 opacity-80" />
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Advance</p>
             <p className="text-lg font-bold text-amber-500">{formatCurrency(advanceTotal)}</p>
-            <p className="text-[9px] text-muted-foreground mt-0.5">Employee owes</p>
+            <p className="text-[9px] text-muted-foreground mt-0.5">Employee owes Owner</p>
           </CardContent>
         </Card>
         <Card className="glass-card border-none bg-gradient-to-br from-emerald-500/10 to-teal-500/5">
@@ -181,15 +185,23 @@ export function MoneyProfile() {
             <Wallet className="h-5 w-5 text-emerald-500 mx-auto mb-1 opacity-80" />
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Due</p>
             <p className="text-lg font-bold text-emerald-500">{formatCurrency(dueTotal)}</p>
-            <p className="text-[9px] text-muted-foreground mt-0.5">You owe</p>
+            <p className="text-[9px] text-muted-foreground mt-0.5">Owner owes Employee</p>
           </CardContent>
         </Card>
-        <Card className="glass-card border-none bg-gradient-to-br from-purple-500/10 to-pink-500/5">
+        <Card className="glass-card border-none bg-gradient-to-br from-purple-500/10 to-indigo-500/5">
           <CardContent className="p-3 text-center">
-            <Coins className="h-5 w-5 text-purple-500 mx-auto mb-1 opacity-80" />
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Give/Take</p>
-            <p className="text-lg font-bold text-purple-500">{formatCurrency(giveTakeTotal)}</p>
-            <p className="text-[9px] text-muted-foreground mt-0.5">Extra balance</p>
+            <Plus className="h-5 w-5 text-purple-500 mx-auto mb-1 opacity-80" />
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Give Money</p>
+            <p className="text-lg font-bold text-purple-500">{formatCurrency(giveMoneyTotal)}</p>
+            <p className="text-[9px] text-muted-foreground mt-0.5">Employee owes Owner</p>
+          </CardContent>
+        </Card>
+        <Card className="glass-card border-none bg-gradient-to-br from-pink-500/10 to-rose-500/5">
+          <CardContent className="p-3 text-center">
+            <Minus className="h-5 w-5 text-pink-500 mx-auto mb-1 opacity-80" />
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Take Money</p>
+            <p className="text-lg font-bold text-pink-500">{formatCurrency(takeMoneyTotal)}</p>
+            <p className="text-[9px] text-muted-foreground mt-0.5">Owner owes Employee</p>
           </CardContent>
         </Card>
       </div>
@@ -291,6 +303,16 @@ export function MoneyProfile() {
             })
           )}
         </div>
+      </div>
+
+      {/* Accounting Audit Mode Warning */}
+      <div className="mt-8 p-4 bg-muted/30 border border-dashed border-border rounded-2xl flex flex-col items-center justify-center text-center">
+        <User className="h-5 w-5 text-muted-foreground mb-2 opacity-50" />
+        <h3 className="text-xs font-bold text-foreground uppercase tracking-widest mb-1">Accounting Audit Mode</h3>
+        <p className="text-[10px] text-muted-foreground max-w-xs leading-relaxed">
+          The balances above are calculated strictly by chronologically parsing active ledger records. 
+          Total Given - Total Recovered = Remaining Balance.
+        </p>
       </div>
 
       {/* Shared Action Modal */}

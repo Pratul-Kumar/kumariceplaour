@@ -11,7 +11,8 @@ import { Button, Input, Card, CardContent, Badge, EmptyState, Spinner, Skeleton 
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { staffService, salaryService, attendanceService, advanceService, ledgerService } from "@/services";
-import { type Staff, type SalaryRecord, type SalaryPayment, type AdvanceRecord, type DueRecord, calculateSalary, calculateUnifiedSalary } from "@/types";
+import { type Staff, type SalaryRecord, type SalaryPayment, type AdvanceRecord, type DueRecord } from "@/types";
+import { calculateSalaryEngine, calculateGeneratedSalary } from "@/services/salaryCalculationService";
 import { formatCurrency, formatMonth, getCurrentMonth, formatDate } from "@/lib/utils";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/firebase/config";
@@ -29,7 +30,7 @@ const salarySchema = z.object({
   recoveryOption: z.enum(["full", "partial", "skip"]).default("full"),
   recoveryAmount: z.preprocess((v) => Number(v) || 0, z.number().min(0)).default(0),
   extraDeduction: z.preprocess((v) => Number(v) || 0, z.number().min(0)).default(0),
-  deductGiveMoney: z.boolean().default(false),
+  giveMoneyAction: z.enum(["deduct", "add", "waive"]).default("deduct"),
   note: z.string().optional(),
 });
 type SalaryFormData = z.infer<typeof salarySchema>;
@@ -266,7 +267,7 @@ export function SalaryManagement() {
   const [selectedRecord, setSelectedRecord] = useState<SalaryRecord | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [previewCalc, setPreviewCalc] = useState<ReturnType<typeof calculateSalary> | null>(null);
+  const [previewCalc, setPreviewCalc] = useState<any>(null);
   const [previewDue, setPreviewDue] = useState(0); // previous due shown in preview
   const [previewActualDeduct, setPreviewActualDeduct] = useState(0);
   const [previewRollover, setPreviewRollover] = useState(0);
@@ -283,7 +284,7 @@ export function SalaryManagement() {
     formState: { errors: errGen },
   } = useForm<SalaryFormData>({
     resolver: zodResolver(salarySchema),
-    defaultValues: { month: getCurrentMonth(), bonus: 0, advance: 0, recoveryOption: "full", recoveryAmount: 0, extraDeduction: 0, deductGiveMoney: false },
+    defaultValues: { month: getCurrentMonth(), bonus: 0, advance: 0, recoveryOption: "full", recoveryAmount: 0, extraDeduction: 0, giveMoneyAction: "deduct" },
   });
 
   const {
@@ -343,31 +344,24 @@ export function SalaryManagement() {
           salaryService.getLastUnpaidRecord(watchedStaffId, Number(yrStr), Number(moStr))
         ]);
         const prevDue = lastUnpaid?.remainingDue || 0;
-        const outstandingBalance = staff.outstandingBalance || 0;
+        const duesSnap = await getDocs(query(collection(db, "dues"), where("staffId", "==", watchedStaffId)));
+        const allDues = duesSnap.docs.map(d => mapDoc(d) as DueRecord).filter(d => !d.isDeleted && (d.status === "active" || d.status === "partial"));
 
-        // Fetch Give Money balance
-        const duesSnap = await getDocs(
-          query(
-            collection(db, "dues"),
-            where("staffId", "==", watchedStaffId),
-            where("type", "==", "EMPLOYEE_TO_OWNER"),
-            where("category", "==", "givetake")
-          )
-        );
-        const gBal = duesSnap.docs
-          .map(d => mapDoc(d) as DueRecord)
-          .filter(d => !d.isDeleted && d.processedInSalary !== true && (d.status === "active" || d.status === "partial"))
+        const gBal = allDues
+          .filter(d => d.type === "EMPLOYEE_TO_OWNER" && d.category === "givetake" && d.processedInSalary !== true)
+          .reduce((sum, d) => sum + (d.remainingAmount || 0), 0);
+
+        const outstandingBalance = allDues
+          .filter(d => d.type === "EMPLOYEE_TO_OWNER" && d.category !== "givetake")
           .reduce((sum, d) => sum + (d.remainingAmount || 0), 0);
 
         setGiveMoneyBalance(gBal);
 
         // Calculate earnings before advance to get the max recoverable amount
-        const earningsCalc = calculateSalary({
+        const earningsCalc = calculateGeneratedSalary({
           staff,
           attendanceRecords: attRecords,
           workingDaysInMonth: daysInMonth,
-          bonus: Number(watchedBonus) || 0,
-          advance: 0,
           extraDeduction: Number(watchedExtra) || 0,
         });
 
@@ -384,52 +378,40 @@ export function SalaryManagement() {
           requestedAdvance = Number(watchedAdvance) || 0;
         }
 
-        const maxRecoverable = Math.max(0, earningsCalc.finalSalary);
+        const maxRecoverable = Math.max(0, earningsCalc.generatedSalary);
         const actualDeductedAdvance = Math.min(requestedAdvance, maxRecoverable);
         const rolloverAmount = Math.max(0, outstandingBalance - actualDeductedAdvance);
         const isCapped = requestedAdvance > actualDeductedAdvance && requestedAdvance > 0;
 
-        const deductGive = watchGen("deductGiveMoney") || false;
+        const giveMoneyAction = watchGen("giveMoneyAction") || "deduct";
 
-        const baseCalc = calculateSalary({
+        const baseCalc = calculateGeneratedSalary({
           staff,
           attendanceRecords: attRecords,
           workingDaysInMonth: daysInMonth,
-          bonus: Number(watchedBonus) || 0,
-          advance: 0,
           extraDeduction: Number(watchedExtra) || 0,
         });
 
-        const unified = calculateUnifiedSalary({
-          generatedSalary: baseCalc.finalSalary,
+        const unified = calculateSalaryEngine({
+          generatedSalary: baseCalc.generatedSalary,
+          bonus: Number(watchedBonus) || 0,
           previousDue: prevDue,
-          advanceDeduction: actualDeductedAdvance,
+          advanceBalance: outstandingBalance,
           giveMoneyAmount: gBal,
-          deductGiveMoney: deductGive
+          deductGiveMoney: giveMoneyAction === 'deduct'
         });
 
-        const cleanBreakdown = baseCalc.breakdown.filter(b => !b.startsWith("Advance") && !b.startsWith("Extra Deduction") && !b.startsWith("Bonus"));
-        if (Number(watchedBonus) > 0) {
-          cleanBreakdown.push(`Bonus: +₹${Number(watchedBonus)}`);
-        }
-        if (Number(watchedExtra) > 0) {
-          cleanBreakdown.push(`Extra Deduction: -₹${Number(watchedExtra)}`);
-        }
-        if (actualDeductedAdvance > 0) {
-          cleanBreakdown.push(`Advance Deduction: -₹${actualDeductedAdvance}`);
-        }
+        const cleanBreakdown = [];
+        cleanBreakdown.push(`Generated Salary: ₹${baseCalc.generatedSalary}`);
+        if (Number(watchedBonus) > 0) cleanBreakdown.push(`Bonus: +₹${Number(watchedBonus)}`);
+        if (Number(watchedExtra) > 0) cleanBreakdown.push(`Extra Deduction: -₹${Number(watchedExtra)}`);
+        if (unified.advanceRecovery > 0) cleanBreakdown.push(`Advance Deduction: -₹${unified.advanceRecovery}`);
         if (gBal > 0) {
-          if (deductGive) {
-            cleanBreakdown.push(`Give Money Deduction: -₹${gBal}`);
-          } else {
-            cleanBreakdown.push(`Give Money Added: +₹${gBal}`);
-          }
+          if (giveMoneyAction === "deduct") cleanBreakdown.push(`Give Money Deduction: -₹${unified.giveMoneyDeducted}`);
+          else cleanBreakdown.push(`Give Money Added: +₹${unified.giveMoneyAdded}`);
         }
 
-        baseCalc.breakdown = cleanBreakdown;
-        baseCalc.finalSalary = unified.finalPayable - prevDue;
-
-        setPreviewCalc(baseCalc);
+        setPreviewCalc({ finalSalary: unified.finalPayable, breakdown: cleanBreakdown, ...baseCalc });
         setPreviewDue(prevDue);
         setPreviewActualDeduct(actualDeductedAdvance);
         setPreviewRollover(rolloverAmount);
@@ -444,7 +426,7 @@ export function SalaryManagement() {
       }
     }, 400);
     return () => { if (previewTimer.current) clearTimeout(previewTimer.current); };
-  }, [watchedStaffId, watchedMonth, watchedBonus, watchedAdvance, watchedRecoveryOption, watchedRecoveryAmount, watchedExtra, watchGen("deductGiveMoney"), staffList]);
+  }, [watchedStaffId, watchedMonth, watchedBonus, watchedAdvance, watchedRecoveryOption, watchedRecoveryAmount, watchedExtra, watchGen("giveMoneyAction"), staffList]);
 
   // ── Totals ──
   const { totalPaid, totalDue } = useMemo(() => ({
@@ -455,7 +437,7 @@ export function SalaryManagement() {
   // ── Handlers ──
   const openGenerate = useCallback(() => {
     setPreviewCalc(null); setPreviewDue(0); setOutstandingRecovery(0); setGiveMoneyBalance(0);
-    resetGen({ month: filterMonth, bonus: 0, advance: 0, recoveryOption: "full", recoveryAmount: 0, extraDeduction: 0, deductGiveMoney: false });
+    resetGen({ month: filterMonth, bonus: 0, advance: 0, recoveryOption: "full", recoveryAmount: 0, extraDeduction: 0, giveMoneyAction: "deduct" });
     setGenerateModalOpen(true);
   }, [filterMonth, resetGen]);
 
@@ -490,15 +472,22 @@ export function SalaryManagement() {
       ]);
 
       const previousDue = lastUnpaid?.remainingDue || 0;
-      const outstandingBalance = staff.outstandingBalance || 0;
+      const duesSnap = await getDocs(query(collection(db, "dues"), where("staffId", "==", data.staffId)));
+      const allDues = duesSnap.docs.map(d => mapDoc(d) as DueRecord).filter(d => !d.isDeleted && (d.status === "active" || d.status === "partial"));
+
+      const giveMoneyBalance = allDues
+        .filter(d => d.type === "EMPLOYEE_TO_OWNER" && d.category === "givetake" && d.processedInSalary !== true)
+        .reduce((sum, d) => sum + (d.remainingAmount || 0), 0);
+
+      const outstandingBalance = allDues
+        .filter(d => d.type === "EMPLOYEE_TO_OWNER" && d.category !== "givetake")
+        .reduce((sum, d) => sum + (d.remainingAmount || 0), 0);
 
       // Calculate earnings before advance to get the max recoverable amount
-      const earningsCalc = calculateSalary({
+      const earningsCalc = calculateGeneratedSalary({
         staff,
         attendanceRecords: attRecords,
         workingDaysInMonth: daysInMonth,
-        bonus: data.bonus,
-        advance: 0,
         extraDeduction: data.extraDeduction,
       });
 
@@ -514,31 +503,33 @@ export function SalaryManagement() {
         requestedAdvance = data.advance || 0;
       }
 
-      const maxRecoverable = Math.max(0, earningsCalc.finalSalary);
+      const maxRecoverable = Math.max(0, earningsCalc.generatedSalary);
       const actualDeductedAdvance = Math.min(requestedAdvance, maxRecoverable);
 
-      const deductGive = data.deductGiveMoney || false;
+      const giveMoneyAction = data.giveMoneyAction || "deduct";
 
-      const baseCalc = calculateSalary({
+      const baseCalc = calculateGeneratedSalary({
         staff,
         attendanceRecords: attRecords,
         workingDaysInMonth: daysInMonth,
-        bonus: data.bonus,
-        advance: 0,
         extraDeduction: data.extraDeduction,
       });
 
-      const unified = calculateUnifiedSalary({
-        generatedSalary: baseCalc.finalSalary,
+      const unified = calculateSalaryEngine({
+        generatedSalary: baseCalc.generatedSalary,
+        bonus: data.bonus,
         previousDue: previousDue,
-        advanceDeduction: actualDeductedAdvance,
+        advanceBalance: outstandingBalance,
         giveMoneyAmount: giveMoneyBalance,
-        deductGiveMoney: deductGive
+        deductGiveMoney: giveMoneyAction === 'deduct'
       });
 
       const now = new Date().toISOString();
       await salaryService.addRecord({
         staffId: data.staffId,
+        advanceBefore: outstandingBalance,
+        giveMoneyBefore: giveMoneyBalance,
+        dueBefore: previousDue,
         month,
         year,
         baseSalary: staff.salaryType === "monthly" ? staff.monthlySalary : staff.dailyWage,
@@ -546,12 +537,13 @@ export function SalaryManagement() {
         advance: actualDeductedAdvance,
         giveMoneyDeducted: unified.giveMoneyDeducted,
         giveMoneyAdded: unified.giveMoneyAdded,
-        deductGiveMoney: deductGive,
-        leaveDeduction: baseCalc.leaveDeductionAmount,
+        giveMoneyAction: giveMoneyAction,
+        leaveDeduction: 0,
         extraDeduction: data.extraDeduction,
         overtime: baseCalc.overtimeAmount,
-        grossSalary: baseCalc.finalSalary + actualDeductedAdvance,
-        finalSalary: unified.finalPayable - previousDue,
+        generatedSalary: baseCalc.generatedSalary,
+        grossSalary: unified.grossSalary,
+        finalSalary: unified.finalPayable,
         previousDue,
         totalPaid: 0,
         remainingDue: unified.finalPayable,
@@ -625,9 +617,48 @@ export function SalaryManagement() {
         else if (att.status === "absent") a++;
         else if (att.status === "half_day") h++;
       });
-      const ledgerEntries = await ledgerService.getByStaff(staff.id!);
+      const duesHistory = await import("@/services").then(m => m.dueService.getByStaff(staff.id!));
       const { generateSalarySlip } = await import("@/services/pdf/generateSalarySlip");
-      generateSalarySlip(staff, record, payments, { workingDays: w, presentDays: p, absentDays: a, leaveDays: 0, halfDays: h }, ledgerEntries);
+      
+      const baseCalc = calculateGeneratedSalary({
+        staff,
+        attendanceRecords: attRecords,
+        workingDaysInMonth: w,
+        extraDeduction: record.extraDeduction || 0,
+      });
+
+      const giveMoneyAmount = Math.max(0, (record.giveMoneyDeducted || 0) + (record.giveMoneyAdded || 0));
+      const advanceBeforeRaw = record.salaryRollbackSnapshot?.advanceBefore || staff.advanceBalance || staff.outstandingBalance || 0;
+      const advanceBefore = Math.max(0, advanceBeforeRaw);
+
+      const rawGeneratedSalary = record.generatedSalary ?? baseCalc.generatedSalary;
+
+      const engineResult = calculateSalaryEngine({
+        generatedSalary: rawGeneratedSalary,
+        bonus: record.bonus || 0,
+        previousDue: record.previousDue || 0,
+        advanceBalance: advanceBefore,
+        giveMoneyAmount: giveMoneyAmount,
+        deductGiveMoney: record.deductGiveMoney ?? true
+      });
+
+      const calcResult = {
+        ...engineResult,
+        generatedSalary: rawGeneratedSalary,
+        bonus: record.bonus || 0,
+        previousDue: record.previousDue || 0,
+        previousAdvance: advanceBefore,
+        remainingAdvance: Math.max(0, advanceBefore - engineResult.advanceRecovery)
+      };
+
+      generateSalarySlip(
+        staff, 
+        record, 
+        payments, 
+        { workingDays: w, presentDays: p, absentDays: a, leaveDays: 0, halfDays: h }, 
+        calcResult,
+        duesHistory
+      );
     } catch {
       toast({ type: "error", title: "Could not generate slip", description: "Try again." });
     }
@@ -847,29 +878,41 @@ export function SalaryManagement() {
               <Input type="number" min={0} {...regGen("extraDeduction", { valueAsNumber: true })} placeholder="0" />
             </div>
 
-            {/* Give Money Deduction toggle */}
+            {/* Give Money 3-State Toggle */}
             {giveMoneyBalance > 0 && (
-              <div className="col-span-2 flex items-center justify-between p-4 bg-purple-500/5 rounded-xl border border-purple-500/20">
-                <div className="flex-1 pr-4">
-                  <span className="text-sm font-bold text-purple-900 block">Deduct Give Money</span>
-                  <span className="text-xs text-purple-600">Available: {formatCurrency(giveMoneyBalance)}</span>
+              <div className="col-span-2 p-3.5 bg-purple-500/5 rounded-2xl border border-purple-500/20 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-purple-900 block uppercase tracking-widest">Give Money Action</span>
+                  <span className="text-xs font-bold text-purple-600 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20">
+                    Active: {formatCurrency(giveMoneyBalance)}
+                  </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const currentVal = watchGen("deductGiveMoney") || false;
-                    setGenValue("deductGiveMoney", !currentVal);
-                  }}
-                  className={`flex items-center w-11 h-6 p-1 rounded-full transition-colors duration-200 outline-none ${
-                    watchGen("deductGiveMoney") ? 'bg-purple-600' : 'bg-gray-300'
-                  }`}
-                >
-                  <span
-                    className={`w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${
-                      watchGen("deductGiveMoney") ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
+                
+                <div className="grid grid-cols-3 gap-2">
+                  <label className={`flex flex-col items-center justify-center p-2.5 rounded-xl border cursor-pointer text-center select-none transition-all ${watchGen("giveMoneyAction") === "deduct" ? "bg-purple-500/10 border-purple-500/50 shadow-md shadow-purple-500/10" : "bg-card border-border hover:bg-muted"}`}>
+                    <input type="radio" value="deduct" {...regGen("giveMoneyAction")} className="sr-only" />
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${watchGen("giveMoneyAction") === "deduct" ? "text-purple-700 font-bold" : "text-muted-foreground"}`}>
+                      Deduct
+                    </span>
+                    <span className="text-[10px] text-muted-foreground mt-0.5">Recover it</span>
+                  </label>
+                  
+                  <label className={`flex flex-col items-center justify-center p-2.5 rounded-xl border cursor-pointer text-center select-none transition-all ${watchGen("giveMoneyAction") === "add" ? "bg-purple-500/10 border-purple-500/50 shadow-md shadow-purple-500/10" : "bg-card border-border hover:bg-muted"}`}>
+                    <input type="radio" value="add" {...regGen("giveMoneyAction")} className="sr-only" />
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${watchGen("giveMoneyAction") === "add" ? "text-purple-700 font-bold" : "text-muted-foreground"}`}>
+                      Add
+                    </span>
+                    <span className="text-[10px] text-muted-foreground mt-0.5">Gift it</span>
+                  </label>
+
+                  <label className={`flex flex-col items-center justify-center p-2.5 rounded-xl border cursor-pointer text-center select-none transition-all ${watchGen("giveMoneyAction") === "waive" ? "bg-purple-500/10 border-purple-500/50 shadow-md shadow-purple-500/10" : "bg-card border-border hover:bg-muted"}`}>
+                    <input type="radio" value="waive" {...regGen("giveMoneyAction")} className="sr-only" />
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${watchGen("giveMoneyAction") === "waive" ? "text-purple-700 font-bold" : "text-muted-foreground"}`}>
+                      Waive
+                    </span>
+                    <span className="text-[10px] text-muted-foreground mt-0.5">Ignore for now</span>
+                  </label>
+                </div>
               </div>
             )}
 
@@ -887,7 +930,7 @@ export function SalaryManagement() {
                 <Calculator className="h-4 w-4 text-primary" />
                 <p className="text-sm font-semibold">Salary Preview</p>
               </div>
-              {previewCalc.breakdown.map((b, i) => (
+              {previewCalc.breakdown.map((b: string, i: number) => (
                 <p key={i} className="text-xs text-muted-foreground">{b}</p>
               ))}
               {previewDue > 0 && (

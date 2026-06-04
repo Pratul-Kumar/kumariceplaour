@@ -4,6 +4,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/firebase/config";
 import type { Staff, Attendance, Expense, SalaryRecord, SalaryPayment, AdvanceRecord, AppSettings, LedgerEntry, LedgerType, DueRecord, DueType } from "@/types";
+import { calculateSalaryEngine } from "@/services/salaryCalculationService";
 
 const mapDoc = <T>(d: any): T => ({ id: d.id, ...d.data() } as T);
 
@@ -481,10 +482,11 @@ export const salaryService = {
   },
 
   addRecord: async (
-    data: Omit<SalaryRecord, "id" | "createdAt" | "updatedAt">,
+    dataInput: any,
     pendingAdvances?: any,
     payment?: { amountPaid: number; paymentDate: string; paymentMethod: "cash" | "upi" | "bank" | "other"; note?: string }
   ) => {
+    const data = dataInput as Omit<SalaryRecord, "id" | "createdAt" | "updatedAt"> & { advanceBefore?: number; dueBefore?: number; giveMoneyBefore?: number; grossSalary?: number; deductGiveMoney?: boolean };
     const now = new Date().toISOString();
     const staffRef = doc(db, "staff", data.staffId);
 
@@ -498,11 +500,27 @@ export const salaryService = {
     allActiveDues.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
     // Split them:
-    const activeAdvances = allActiveDues.filter(d => d.category !== "givetake");
-    const activeGiveMoneys = allActiveDues.filter(d => d.category === "givetake");
+    const activeAdvances = allActiveDues.filter(d => d.category !== 'givetake');
+    const activeGiveMoneys = allActiveDues.filter(d => d.category === 'givetake');
 
-    const activeAdvanceRefs = activeAdvances.map(d => doc(db, "dues", d.id!));
-    const activeGiveMoneyRefs = activeGiveMoneys.map(d => doc(db, "dues", d.id!));
+    const activeAdvanceRefs   = activeAdvances.map(d => doc(db, 'dues', d.id!));
+    const activeGiveMoneyRefs = activeGiveMoneys.map(d => doc(db, 'dues', d.id!));
+
+    // Pre-compute advance recovery using the SAME formula as the UI
+    const rawGeneratedSalary = (data as any).generatedSalary ?? (data as any).grossSalary ?? data.baseSalary;
+    const totalAdvanceBalance   = activeAdvances.reduce((s, d) => s + (d.remainingAmount || 0), 0);
+    const totalGiveMoneyBalance = activeGiveMoneys.reduce((s, d) => s + (d.remainingAmount || 0), 0);
+    const preCalc = calculateSalaryEngine({
+      generatedSalary: rawGeneratedSalary,
+      bonus:           data.bonus || 0,
+      previousDue:     data.previousDue || 0,
+      advanceBalance:  totalAdvanceBalance,
+      giveMoneyAmount: totalGiveMoneyBalance,
+      deductGiveMoney: !!(data as any).deductGiveMoney
+    });
+    const authorisedAdvanceRecovery = preCalc.advanceRecovery;
+    const derivedGiveMoneyDeducted  = preCalc.giveMoneyDeducted;
+    const derivedGiveMoneyAdded     = preCalc.giveMoneyAdded;
 
     await runTransaction(db, async (tx) => {
       // ====================================
@@ -533,8 +551,9 @@ export const salaryService = {
       const staffData = staffSnap.data() as Staff;
       const currentBal = staffData.outstandingBalance || 0;
 
-      const recoveredAmount = data.advance || 0;
-      let remainingToRecover = recoveredAmount;
+      // Use pre-computed advance recovery (matches UI calculation exactly)
+      const recoveredAmount   = authorisedAdvanceRecovery;
+      let remainingToRecover  = recoveredAmount;
 
       // ====================================
       // 3. ALL WRITES
@@ -558,24 +577,41 @@ export const salaryService = {
       const giveMoneySettled = activeGiveMoneysList.reduce((sum, g) => sum + (g.data.remainingAmount || 0), 0);
 
       for (const due of activeGiveMoneysList) {
-        const dueRef = due.ref;
-        tx.update(dueRef, {
+        tx.update(due.ref, {
           remainingAmount: 0,
-          status: "settled",
+          status: 'settled',
           processedInSalary: true,
           updatedAt: now
         });
       }
 
-      // 2. Generate Salary Record
+      const calculatedFinalSalary = preCalc.finalPayable;
+      const paymentAmount = (payment && payment.amountPaid > 0) ? payment.amountPaid : 0;
+      const calculatedRemainingDue = Math.max(0, calculatedFinalSalary - paymentAmount);
+      const computedStatus = calculatedRemainingDue <= 0 ? "paid" : "pending";
+
+      const newBal = currentBal - recoveredAmount - giveMoneySettled - calculatedRemainingDue;
+
+      // 2. Generate Salary Record — use derived amounts so record is always consistent
       const salaryRef = doc(salaryCol);
       tx.set(salaryRef, {
         ...data,
-        giveMoneyDeducted: data.deductGiveMoney ? giveMoneySettled : 0,
-        giveMoneyAdded: !data.deductGiveMoney ? giveMoneySettled : 0,
+        generatedSalary: rawGeneratedSalary,
+        advance:          recoveredAmount,
+        giveMoneyDeducted: derivedGiveMoneyDeducted,
+        giveMoneyAdded:    derivedGiveMoneyAdded,
         giveMoneyIds,
-        grossSalary: (data as any).grossSalary || (data.baseSalary + data.overtime + data.bonus - data.extraDeduction - data.leaveDeduction),
+        grossSalary:       preCalc.grossSalary,
+        finalSalary:       calculatedFinalSalary,
+        remainingDue:      calculatedRemainingDue,
+        status:            computedStatus,
         outstandingBefore: currentBal,
+        outstandingAfter:  newBal,
+        salaryRollbackSnapshot: {
+          advanceBefore:    data.advanceBefore ?? (staffData.advanceBalance || staffData.outstandingBalance || 0),
+          dueBefore:        data.dueBefore ?? (staffData.dueBalance || 0),
+          giveMoneyBefore:  data.giveMoneyBefore ?? (staffData.giveMoneyBalance || 0),
+        },
         recoveredAmount,
         createdAt: now,
         updatedAt: now
@@ -618,7 +654,7 @@ export const salaryService = {
       tx.set(genLedgerRef, {
         staffId: data.staffId,
         type: "salary_generated",
-        amount: data.finalSalary,
+        amount: calculatedFinalSalary,
         date: now.split("T")[0],
         month: `${data.year}-${String(data.month).padStart(2, "0")}`,
         note: `Salary generated for month ${data.year}-${String(data.month).padStart(2, "0")}`,
@@ -628,13 +664,12 @@ export const salaryService = {
       });
 
       // 4. Handle Dues creation (if salary is pending or partially paid)
-      const remainingDue = data.remainingDue;
-      if (remainingDue > 0) {
+      if (calculatedRemainingDue > 0) {
         const linkedDueRef = doc(duesCol);
         tx.set(linkedDueRef, {
           staffId: data.staffId,
-          amount: remainingDue,
-          remainingAmount: remainingDue,
+          amount: calculatedRemainingDue,
+          remainingAmount: calculatedRemainingDue,
           type: "OWNER_TO_EMPLOYEE",
           status: "active",
           linkedSalaryId: salaryRef.id,
@@ -648,10 +683,10 @@ export const salaryService = {
         tx.set(dueLedgerRef, {
           staffId: data.staffId,
           type: "due_created",
-          amount: remainingDue,
+          amount: calculatedRemainingDue,
           date: now.split("T")[0],
           month: `${data.year}-${String(data.month).padStart(2, "0")}`,
-          note: `Salary pending: ₹${remainingDue}`,
+          note: `Salary pending: ₹${calculatedRemainingDue}`,
           salaryRecordId: salaryRef.id,
           createdAt: now,
           updatedAt: now
@@ -660,7 +695,6 @@ export const salaryService = {
 
       // 5. If immediate payment was made
       if (payment && payment.amountPaid > 0) {
-        const paymentAmount = payment.amountPaid;
         const paymentRef = doc(salaryPaymentsCol);
         tx.set(paymentRef, {
           salaryRecordId: salaryRef.id,
@@ -699,9 +733,11 @@ export const salaryService = {
       }
 
       // 6. Recalculate net balance and update staff
-      const newBal = currentBal - recoveredAmount - giveMoneySettled - remainingDue;
       tx.update(staffRef, {
         outstandingBalance: newBal,
+        advanceBalance: (staffData.advanceBalance || 0) - recoveredAmount,
+        giveMoneyBalance: (staffData.giveMoneyBalance || 0) - giveMoneySettled,
+        dueBalance: (staffData.dueBalance || 0) - data.previousDue,
         updatedAt: now
       });
     });
@@ -766,8 +802,10 @@ export const salaryService = {
       // 2. STORE DATA
       // ====================================
       let currentBal = 0;
+      let staffData = {} as Staff;
       if (staffSnap.exists()) {
-        currentBal = (staffSnap.data() as Staff).outstandingBalance || 0;
+        staffData = staffSnap.data() as Staff;
+        currentBal = staffData.outstandingBalance || 0;
       }
 
       // ====================================
@@ -844,6 +882,9 @@ export const salaryService = {
         // Update Staff balance
         tx.update(staffRef, {
           outstandingBalance: currentBal + recovered + giveMoneyProcessed + (record.remainingDue || 0),
+          advanceBalance: (staffData.advanceBalance || 0) + recovered,
+          giveMoneyBalance: (staffData.giveMoneyBalance || 0) + giveMoneyProcessed,
+          dueBalance: (staffData.dueBalance || 0) + (record.previousDue || 0),
           updatedAt: now
         });
       }
@@ -1277,10 +1318,25 @@ export const dueService = {
       
       const staffData = staffSnap.data() as Staff;
       const currentBal = staffData.outstandingBalance || 0;
+      const currentAdv = staffData.advanceBalance || 0;
+      const currentDue = staffData.dueBalance || 0;
+      const currentGiveMoney = staffData.giveMoneyBalance || 0;
       
       // EMPLOYEE_TO_OWNER is positive debt, OWNER_TO_EMPLOYEE is negative debt
       const diff = data.type === "EMPLOYEE_TO_OWNER" ? data.amount : -data.amount;
       const newBal = currentBal + diff;
+
+      let newAdv = currentAdv;
+      let newDue = currentDue;
+      let newGiveMoney = currentGiveMoney;
+
+      if (data.category === "advance") {
+        newAdv += (data.type === "EMPLOYEE_TO_OWNER" ? data.amount : -data.amount);
+      } else if (data.category === "due") {
+        newDue += (data.type === "OWNER_TO_EMPLOYEE" ? data.amount : -data.amount);
+      } else if (data.category === "givetake") {
+        newGiveMoney += (data.type === "EMPLOYEE_TO_OWNER" ? data.amount : -data.amount);
+      }
 
       let remainingAmount = data.amount;
 
@@ -1330,6 +1386,9 @@ export const dueService = {
       
       tx.update(staffRef, {
         outstandingBalance: newBal,
+        advanceBalance: newAdv,
+        dueBalance: newDue,
+        giveMoneyBalance: newGiveMoney,
         updatedAt: now
       });
     });
@@ -1360,8 +1419,31 @@ export const dueService = {
       if (staffSnap.exists()) {
         const staffData = staffSnap.data() as Staff;
         const currentBal = staffData.outstandingBalance || 0;
+        const currentAdv = staffData.advanceBalance || 0;
+        const currentDue = staffData.dueBalance || 0;
+        const currentGiveMoney = staffData.giveMoneyBalance || 0;
+        
         const diffToReverse = dueData.type === "EMPLOYEE_TO_OWNER" ? -dueData.remainingAmount : dueData.remainingAmount;
-        tx.update(staffRef, { outstandingBalance: currentBal + diffToReverse, updatedAt: new Date().toISOString() });
+        
+        let newAdv = currentAdv;
+        let newDue = currentDue;
+        let newGiveMoney = currentGiveMoney;
+
+        if (dueData.category === "advance") {
+          newAdv += (dueData.type === "EMPLOYEE_TO_OWNER" ? -dueData.remainingAmount : dueData.remainingAmount);
+        } else if (dueData.category === "due") {
+          newDue += (dueData.type === "OWNER_TO_EMPLOYEE" ? -dueData.remainingAmount : dueData.remainingAmount);
+        } else if (dueData.category === "givetake") {
+          newGiveMoney += (dueData.type === "EMPLOYEE_TO_OWNER" ? -dueData.remainingAmount : dueData.remainingAmount);
+        }
+
+        tx.update(staffRef, { 
+          outstandingBalance: currentBal + diffToReverse, 
+          advanceBalance: newAdv,
+          dueBalance: newDue,
+          giveMoneyBalance: newGiveMoney,
+          updatedAt: new Date().toISOString() 
+        });
       }
       
       tx.update(dueRef, { isDeleted: true, updatedAt: new Date().toISOString() });
@@ -1384,9 +1466,25 @@ export const dueService = {
       
       const staffRef = doc(db, "staff", due.staffId);
       const staffSnap = await tx.get(staffRef);
-      const currentBal = staffSnap.exists() ? (staffSnap.data() as Staff).outstandingBalance || 0 : 0;
+      const staffData = staffSnap.exists() ? (staffSnap.data() as Staff) : {} as Staff;
+      const currentBal = staffData.outstandingBalance || 0;
+      const currentAdv = staffData.advanceBalance || 0;
+      const currentDue = staffData.dueBalance || 0;
+      const currentGiveMoney = staffData.giveMoneyBalance || 0;
       
       const diff = due.type === "EMPLOYEE_TO_OWNER" ? -due.remainingAmount : due.remainingAmount;
+      
+      let newAdv = currentAdv;
+      let newDue = currentDue;
+      let newGiveMoney = currentGiveMoney;
+
+      if (due.category === "advance") {
+        newAdv += (due.type === "EMPLOYEE_TO_OWNER" ? -due.remainingAmount : due.remainingAmount);
+      } else if (due.category === "due") {
+        newDue += (due.type === "OWNER_TO_EMPLOYEE" ? -due.remainingAmount : due.remainingAmount);
+      } else if (due.category === "givetake") {
+        newGiveMoney += (due.type === "EMPLOYEE_TO_OWNER" ? -due.remainingAmount : due.remainingAmount);
+      }
       
       tx.update(dueRef, {
         isDeleted: true,
@@ -1408,9 +1506,17 @@ export const dueService = {
       
       tx.update(staffRef, {
         outstandingBalance: currentBal + diff,
+        advanceBalance: newAdv,
+        dueBalance: newDue,
+        giveMoneyBalance: newGiveMoney,
         updatedAt: now
       });
     });
+  },
+
+  getByStaff: async (staffId: string) => {
+    const duesSnap = await getDocs(query(duesCol, where("staffId", "==", staffId)));
+    return duesSnap.docs.map(d => mapDoc<DueRecord>(d));
   },
 
   settleDues: async (staffId: string, type: DueType, amount: number, date: string, method: string, notes?: string) => {

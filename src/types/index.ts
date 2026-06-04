@@ -18,6 +18,9 @@ export interface Staff {
   address?: string;
   note?: string;
   outstandingBalance?: number;
+  advanceBalance?: number;
+  dueBalance?: number;
+  giveMoneyBalance?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -74,6 +77,7 @@ export interface SalaryRecord {
   giveMoneyDeducted?: number;
   giveMoneyAdded?: number;
   deductGiveMoney?: boolean;
+  giveMoneyAction?: "deduct" | "add" | "waive";
   giveMoneyIds?: string[];
   previousDue: number;
   finalSalary: number;
@@ -85,9 +89,15 @@ export interface SalaryRecord {
   rolloverAdvanceId?: string; // tracks any rollover advance created
   note?: string;
   grossSalary?: number;
+  generatedSalary?: number;
   outstandingBefore?: number;
   recoveredAmount?: number;
   outstandingAfter?: number;
+  salaryRollbackSnapshot?: {
+    advanceBefore: number;
+    dueBefore: number;
+    giveMoneyBefore: number;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -186,159 +196,7 @@ export function getCategoryInfo(category: ExpenseCategory) {
 // ============================================================
 // SALARY CALCULATION ENGINE
 // ============================================================
-export interface SalaryCalculationInput {
-  staff: Staff;
-  attendanceRecords: Attendance[];
-  workingDaysInMonth: number;
-  bonus?: number;
-  advance?: number;
-  extraDeduction?: number;
-  overtimeRatePerHour?: number; // default: perDaySalary/8
-}
-
-export interface SalaryCalculationResult {
-  presentDays: number;
-  absentDays: number;
-  leaveDays: number;
-  halfDays: number;
-  totalOvertimeHours: number;
-  deductedLeaves: number;
-  leaveDeductionAmount: number;
-  overtimeAmount: number;
-  finalSalary: number;
-  remainingDue: number;
-  breakdown: string[];
-}
-
-export function calculateSalary(input: SalaryCalculationInput): SalaryCalculationResult {
-  const { staff, attendanceRecords, workingDaysInMonth, bonus = 0, advance = 0, extraDeduction = 0 } = input;
-  const breakdown: string[] = [];
-
-  // Count attendance
-  let presentDays = 0, absentDays = 0, halfDays = 0, leaveDays = 0, totalOvertimeHours = 0;
-  for (const rec of attendanceRecords) {
-    if (rec.status === "present")  { presentDays += 1; }
-    else if (rec.status === "half_day") { presentDays += 0.5; halfDays += 1; }
-    else if (rec.status === "absent")  { absentDays += 1; }
-    else if (rec.status === "leave")   { leaveDays += 1; }
-    totalOvertimeHours += rec.overtimeHours || 0;
-  }
-
-  let finalSalary = 0;
-
-  if (staff.salaryType === "monthly") {
-    const perDaySalary = staff.monthlySalary / workingDaysInMonth;
-    const absentDeduction = absentDays * perDaySalary;
-    const halfDayDeduction = halfDays * (perDaySalary / 2);
-    const overtimeRate = input.overtimeRatePerHour ?? perDaySalary / 8;
-    const overtimeAmount = totalOvertimeHours * overtimeRate;
-
-    finalSalary = staff.monthlySalary - absentDeduction - halfDayDeduction + overtimeAmount + bonus - advance - extraDeduction;
-    const remainingDue = finalSalary;
-
-    breakdown.push(`Base: ₹${staff.monthlySalary.toLocaleString()}`);
-    if (absentDeduction > 0) breakdown.push(`Absent (${absentDays}d): -₹${absentDeduction.toFixed(0)}`);
-    if (halfDayDeduction > 0) breakdown.push(`Half Days (${halfDays}): -₹${halfDayDeduction.toFixed(0)}`);
-    if (overtimeAmount > 0) breakdown.push(`Overtime (${totalOvertimeHours}h): +₹${overtimeAmount.toFixed(0)}`);
-    if (bonus > 0) breakdown.push(`Bonus: +₹${bonus}`);
-    if (advance > 0) breakdown.push(`Advance: -₹${advance}`);
-    if (extraDeduction > 0) breakdown.push(`Extra Deduction: -₹${extraDeduction}`);
-
-    return { 
-      presentDays, 
-      absentDays, 
-      leaveDays, 
-      halfDays, 
-      totalOvertimeHours, 
-      deductedLeaves: 0, 
-      leaveDeductionAmount: 0, 
-      overtimeAmount: totalOvertimeHours * overtimeRate, 
-      finalSalary, 
-      remainingDue, 
-      breakdown 
-    };
-  } else {
-    // Daily wage
-    const perDaySalary = staff.dailyWage;
-    const overtimeRate = input.overtimeRatePerHour ?? perDaySalary / 8;
-    const overtimeAmount = totalOvertimeHours * overtimeRate;
-    finalSalary = presentDays * perDaySalary + overtimeAmount + bonus - advance - extraDeduction;
-    const remainingDue = finalSalary;
-
-    breakdown.push(`Days Present (${presentDays}): ₹${(presentDays * perDaySalary).toFixed(0)}`);
-    if (overtimeAmount > 0) breakdown.push(`Overtime (${totalOvertimeHours}h): +₹${overtimeAmount.toFixed(0)}`);
-    if (bonus > 0) breakdown.push(`Bonus: +₹${bonus}`);
-    if (advance > 0) breakdown.push(`Advance: -₹${advance}`);
-    if (extraDeduction > 0) breakdown.push(`Extra Deduction: -₹${extraDeduction}`);
-
-    return { 
-      presentDays, 
-      absentDays, 
-      leaveDays, 
-      halfDays, 
-      totalOvertimeHours, 
-      deductedLeaves: 0, 
-      leaveDeductionAmount: 0, 
-      overtimeAmount, 
-      finalSalary, 
-      remainingDue, 
-      breakdown 
-    };
-  }
-}
-
-export interface UnifiedSalaryInput {
-  generatedSalary: number;   // base + overtime + bonus - leave - extraDeduction
-  previousDue: number;       // OWNER_TO_EMPLOYEE due money
-  advanceDeduction: number;  // EMPLOYEE_TO_OWNER advance deducted
-  giveMoneyAmount: number;   // active unprocessed Give Money balance
-  deductGiveMoney: boolean;  // whether to deduct or add
-}
-
-export interface UnifiedSalaryResult {
-  finalPayable: number;
-  giveMoneyDeducted: number;
-  giveMoneyAdded: number;
-  breakdown: string[];
-}
-
-export function calculateUnifiedSalary(input: UnifiedSalaryInput): UnifiedSalaryResult {
-  const { generatedSalary, previousDue, advanceDeduction, giveMoneyAmount, deductGiveMoney } = input;
-  
-  let giveMoneyDeducted = 0;
-  let giveMoneyAdded = 0;
-  let finalPayable = 0;
-  const breakdown: string[] = [];
-
-  if (deductGiveMoney) {
-    giveMoneyDeducted = giveMoneyAmount;
-    finalPayable = Math.max(0, generatedSalary + previousDue - advanceDeduction - giveMoneyAmount);
-  } else {
-    giveMoneyAdded = giveMoneyAmount;
-    finalPayable = Math.max(0, generatedSalary + previousDue - advanceDeduction + giveMoneyAmount);
-  }
-
-  breakdown.push(`Generated Salary: ₹${generatedSalary.toLocaleString()}`);
-  if (previousDue > 0) breakdown.push(`Previous Due: +₹${previousDue.toLocaleString()}`);
-  if (advanceDeduction > 0) breakdown.push(`Advance Deduction: -₹${advanceDeduction.toLocaleString()}`);
-  
-  if (deductGiveMoney) {
-    if (giveMoneyDeducted > 0) {
-      breakdown.push(`Give Money Deduction: -₹${giveMoneyDeducted.toLocaleString()}`);
-    }
-  } else {
-    if (giveMoneyAdded > 0) {
-      breakdown.push(`Give Money Added: +₹${giveMoneyAdded.toLocaleString()}`);
-    }
-  }
-
-  return {
-    finalPayable,
-    giveMoneyDeducted,
-    giveMoneyAdded,
-    breakdown
-  };
-}
+// Salary engine moved to salaryCalculationService.ts
 
 // ============================================================
 // EMPLOYEE FINANCIAL LEDGER
@@ -390,5 +248,6 @@ export interface DueRecord {
   status: "active" | "settled" | "partial";
   isDeleted?: boolean;
   processedInSalary?: boolean;
+  giveMoneyStatus?: "PENDING" | "ADDED_TO_SALARY" | "DEDUCTED_FROM_SALARY" | "WAIVED";
 }
 

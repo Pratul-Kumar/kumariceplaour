@@ -5,7 +5,8 @@ import { Card, CardContent, Button, Input, Skeleton, Spinner, Badge } from '@/co
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import { staffService, attendanceService, salaryService, ledgerService, dueService } from '@/services';
-import { type Staff, calculateSalary, type SalaryRecord, type Attendance, type SalaryPayment, type DueRecord, calculateUnifiedSalary } from '@/types';
+import { type Staff, type SalaryRecord, type Attendance, type SalaryPayment, type DueRecord } from '@/types';
+import { calculateSalaryEngine, calculateGeneratedSalary } from '@/services/salaryCalculationService';
 import { formatCurrency, getCurrentMonth, formatMonth, generateAvatarColor, getInitials } from '@/lib/utils';
 import { useForm } from 'react-hook-form';
 
@@ -75,18 +76,16 @@ export function SalaryProfile() {
       const attRecords = await attendanceService.getByStaffAndMonth(staff.id!, currentMonthStr);
       const pDays = attRecords.filter(r => r.status === 'present').length;
       
-      const calc = calculateSalary({
+      const calc = calculateGeneratedSalary({
         staff,
         attendanceRecords: attRecords,
         workingDaysInMonth: daysInMonth,
-        bonus: watchedBonus,
-        advance: 0,
         extraDeduction: 0,
       });
 
       setPresentDays(pDays);
       setWorkingDays(daysInMonth);
-      setCalculatedSalary(calc.finalSalary);
+      setCalculatedSalary(calc.generatedSalary);
       setLoading(false);
     };
     loadSalaryData();
@@ -134,23 +133,26 @@ export function SalaryProfile() {
     .filter(d => d.type === 'EMPLOYEE_TO_OWNER' && d.category === 'givetake' && !d.isDeleted && d.processedInSalary !== true && (d.status === 'active' || d.status === 'partial'))
     .reduce((sum, d) => sum + (d.remainingAmount || 0), 0);
 
-  const currentRecord = records[0]; // If there's a record for this month
+  const currentRecord = records[0];
   const isGenerated = !!currentRecord;
 
-  const grossPayable = calculatedSalary + dueMoney;
-  const actualDeduct = Math.min(advanceSalary, grossPayable);
-
-  const unifiedResult = calculateUnifiedSalary({
+  // ── Single Source of Truth Calculation ────────────────
+  const engineResult = calculateSalaryEngine({
     generatedSalary: calculatedSalary,
+    bonus: watchedBonus,
     previousDue: dueMoney,
-    advanceDeduction: actualDeduct,
+    advanceBalance: advanceSalary,
     giveMoneyAmount: giveMoneyBalance,
     deductGiveMoney: deductGiveMoney
   });
 
-  const giveMoneyDeducted = unifiedResult.giveMoneyDeducted;
-  const giveMoneyAdded = unifiedResult.giveMoneyAdded;
-  const finalPayableCalc = unifiedResult.finalPayable;
+  const grossSalaryTotal = engineResult.grossSalary;
+  const giveMoneyDeducted = engineResult.giveMoneyDeducted;
+  const giveMoneyAdded    = engineResult.giveMoneyAdded;
+  const netAvailable      = engineResult.netAvailable;
+  const correctAdvanceDeduction = engineResult.advanceRecovery;
+  const advanceRecovery  = engineResult.advanceRecovery;
+  const finalPayableCalc = engineResult.finalPayable;
 
   const openPaymentModal = (type: 'full' | 'partial' | 'remaining') => {
     setPaymentType(type);
@@ -163,37 +165,36 @@ export function SalaryProfile() {
     }
   };
 
-  // Open the adjustment modal, pre-populating with available amounts
   const openAdjustModal = () => {
     setAdjAddDue(dueMoney > 0);
     setAdjDueAmount(dueMoney);
     setAdjDeductAdvance(advanceSalary > 0);
-    setAdjAdvanceAmount(Math.min(advanceSalary, calculatedSalary + dueMoney));
-    setAdjDeductGiveMoney(deductGiveMoney && giveMoneyBalance > 0);
+    setAdjAdvanceAmount(advanceSalary);
+    setAdjDeductGiveMoney(deductGiveMoney);
     setAdjGiveMoneyAmount(giveMoneyBalance);
     setShowAdjustModal(true);
   };
 
-  // Confirm adjustments → move to payment modal
   const confirmAdjustments = (type: 'full' | 'partial') => {
-    const addedDue = adjAddDue ? Math.min(adjDueAmount, dueMoney) : 0;
-    const deductedAdv = adjDeductAdvance ? Math.min(adjAdvanceAmount, advanceSalary) : 0;
-    
-    const unified = calculateUnifiedSalary({
+    const addedDue  = adjAddDue ? Math.min(adjDueAmount, dueMoney) : 0;
+    const adjAdvBal = adjDeductAdvance ? Math.min(adjAdvanceAmount, advanceSalary) : 0;
+
+    const engineResult = calculateSalaryEngine({
       generatedSalary: calculatedSalary,
+      bonus: watchedBonus,
       previousDue: addedDue,
-      advanceDeduction: deductedAdv,
+      advanceBalance: adjAdvBal,
       giveMoneyAmount: giveMoneyBalance,
       deductGiveMoney: adjDeductGiveMoney
     });
 
     setConfirmedDue(addedDue);
-    setConfirmedAdvance(deductedAdv);
-    setConfirmedGiveMoney(unified.giveMoneyDeducted);
-    setConfirmedFinal(unified.finalPayable);
+    setConfirmedAdvance(engineResult.advanceRecovery);
+    setConfirmedGiveMoney(engineResult.giveMoneyDeducted);
+    setConfirmedFinal(engineResult.finalPayable);
     setShowAdjustModal(false);
     setPaymentType(type);
-    setValue('amount', type === 'full' ? unified.finalPayable : 0);
+    setValue('amount', type === 'full' ? engineResult.finalPayable : 0);
   };
 
   const handleDeleteSalary = async () => {
@@ -266,30 +267,40 @@ export function SalaryProfile() {
       }
 
       // Use confirmed adjustment amounts if set, else fall back to auto values
-      const usedDue     = confirmedFinal > 0 ? confirmedDue     : dueMoney;
-      const usedAdvance = confirmedFinal > 0 ? confirmedAdvance : actualDeduct;
-      const usedGiveMoney = confirmedFinal > 0 ? confirmedGiveMoney : giveMoneyDeducted;
-      const actualPayable = confirmedFinal > 0 ? confirmedFinal : finalPayableCalc;
-      const paymentAmount = paymentType === 'full' ? actualPayable : data.amount;
+      const usedDue        = confirmedFinal > 0 ? confirmedDue     : dueMoney;
+      const usedAdvance    = confirmedFinal > 0 ? confirmedAdvance : advanceRecovery;
+      const usedGiveMoney  = confirmedFinal > 0 ? confirmedGiveMoney : giveMoneyDeducted;
+      const usedGivAdded   = confirmedFinal > 0 ? 0 : giveMoneyAdded;
+      const actualPayable  = confirmedFinal > 0 ? confirmedFinal : finalPayableCalc;
+      const paymentAmount  = paymentType === 'full' ? actualPayable : data.amount;
 
       if (paymentAmount > actualPayable) {
         throw new Error(`Cannot pay more than final payable of ${formatCurrency(actualPayable)}`);
       }
 
+      const appliedDeductGiveMoney = confirmedFinal > 0 ? adjDeductGiveMoney : deductGiveMoney;
+      const usedGrossSalary = calculatedSalary + watchedBonus + usedDue;
+
       await salaryService.addRecord({
         staffId: staff.id!,
+        advanceBefore: advanceSalary,
+        giveMoneyBefore: giveMoneyBalance,
+        dueBefore: dueMoney,
         month,
         year,
         baseSalary: staff.salaryType === 'monthly' ? staff.monthlySalary : staff.dailyWage,
-        bonus: data.bonus || 0,
+        bonus: watchedBonus,
         advance: usedAdvance,
         giveMoneyDeducted: usedGiveMoney,
-        deductGiveMoney: confirmedFinal > 0 ? adjDeductGiveMoney : deductGiveMoney,
+        giveMoneyAdded: usedGivAdded,
+        giveMoneyAction: appliedDeductGiveMoney ? 'deduct' : 'add',
+        deductGiveMoney: appliedDeductGiveMoney,
         leaveDeduction: 0,
         extraDeduction: 0,
         overtime: 0,
-        grossSalary: calculatedSalary,
-        finalSalary: calculatedSalary,
+        generatedSalary: calculatedSalary,
+        grossSalary: usedGrossSalary,
+        finalSalary: actualPayable,
         previousDue: usedDue,
         totalPaid: 0,
         remainingDue: Math.max(0, actualPayable - paymentAmount),
@@ -354,14 +365,47 @@ export function SalaryProfile() {
       });
       
       const ledgerEntries = await ledgerService.getByStaff(staff.id!);
+      const duesHistory = await dueService.getByStaff(staff.id!);
       
-      generateSalarySlip(staff, record, payments, { 
-        workingDays, 
-        presentDays: pDays, 
-        absentDays: aDays, 
-        leaveDays: lDays, 
-        halfDays: hDays 
-      }, ledgerEntries);
+      const baseCalc = calculateGeneratedSalary({
+        staff,
+        attendanceRecords: attRecords,
+        workingDaysInMonth: workingDays,
+        extraDeduction: record.extraDeduction || 0,
+      });
+
+      const giveMoneyAmount = Math.max(0, (record.giveMoneyDeducted || 0) + (record.giveMoneyAdded || 0));
+      const advanceBeforeRaw = record.salaryRollbackSnapshot?.advanceBefore || staff.advanceBalance || staff.outstandingBalance || 0;
+      const advanceBefore = Math.max(0, advanceBeforeRaw);
+
+      const rawGeneratedSalary = record.generatedSalary ?? baseCalc.generatedSalary;
+
+      const engineResult = calculateSalaryEngine({
+        generatedSalary: rawGeneratedSalary,
+        bonus: record.bonus || 0,
+        previousDue: record.previousDue || 0,
+        advanceBalance: advanceBefore,
+        giveMoneyAmount: giveMoneyAmount,
+        deductGiveMoney: record.deductGiveMoney ?? true
+      });
+
+      const calcResult = {
+        ...engineResult,
+        generatedSalary: rawGeneratedSalary,
+        bonus: record.bonus || 0,
+        previousDue: record.previousDue || 0,
+        previousAdvance: advanceBefore,
+        remainingAdvance: Math.max(0, advanceBefore - engineResult.advanceRecovery)
+      };
+      
+      generateSalarySlip(
+        staff, 
+        record, 
+        payments, 
+        { workingDays, presentDays: pDays, absentDays: aDays, leaveDays: lDays, halfDays: hDays }, 
+        calcResult,
+        duesHistory
+      );
     } catch (err) {
       console.error(err);
       toast({ type: "error", title: "Could not generate slip", description: "Try again." });
@@ -501,32 +545,43 @@ export function SalaryProfile() {
               </div>
             </div>
 
-            {/* Live preview of current auto values */}
+            {/* Live preview — values come directly from calculateUnifiedSalary */}
             <div className="space-y-2 mb-5 bg-muted/30 rounded-xl p-4 border border-border">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Generated Salary</span>
                 <span className="font-semibold text-foreground">{formatCurrency(calculatedSalary)}</span>
               </div>
+              {watchedBonus > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Bonus</span>
+                  <span className="font-semibold text-emerald-500">+{formatCurrency(watchedBonus)}</span>
+                </div>
+              )}
               {dueMoney > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Previous Due</span>
                   <span className="font-semibold text-emerald-500">+{formatCurrency(dueMoney)}</span>
                 </div>
               )}
-              {advanceSalary > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Advance Deduction</span>
-                  <span className="font-semibold text-rose-500">-{formatCurrency(actualDeduct)}</span>
-                </div>
-              )}
+              {/* Gross total divider */}
+              <div className="flex justify-between text-sm pt-1 border-t border-border/50">
+                <span className="font-semibold text-foreground">Gross Salary</span>
+                <span className="font-semibold text-foreground">{formatCurrency(grossSalaryTotal)}</span>
+              </div>
               {giveMoneyBalance > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">
-                    {deductGiveMoney ? "Give Money Deduction" : "Give Money Added"}
+                    {deductGiveMoney ? 'Give Money Deduction' : 'Extra Money Added'}
                   </span>
                   <span className={`font-semibold ${deductGiveMoney ? 'text-rose-500' : 'text-purple-500'}`}>
-                    {deductGiveMoney ? "-" : "+"}{formatCurrency(giveMoneyBalance)}
+                    {deductGiveMoney ? '-' : '+'}{formatCurrency(giveMoneyBalance)}
                   </span>
+                </div>
+              )}
+              {advanceRecovery > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Advance Recovery</span>
+                  <span className="font-semibold text-rose-500">-{formatCurrency(advanceRecovery)}</span>
                 </div>
               )}
               <div className="pt-2 border-t border-border flex justify-between items-center">
@@ -538,14 +593,14 @@ export function SalaryProfile() {
             {giveMoneyBalance > 0 && (
               <div className="flex items-center justify-between mb-5 p-4 bg-purple-500/5 rounded-xl border border-purple-500/20">
                 <div className="flex-1 pr-4">
-                  <span className="text-sm font-bold text-purple-900 block">Deduct Give Money</span>
-                  <span className="text-xs text-purple-600">Available: {formatCurrency(giveMoneyBalance)}</span>
+                  <span className="text-sm font-bold text-purple-400 block">Deduct Give Money</span>
+                  <span className="text-xs text-purple-500">Available: {formatCurrency(giveMoneyBalance)}</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setDeductGiveMoney(v => !v)}
                   className={`flex items-center w-11 h-6 p-1 rounded-full transition-colors duration-200 outline-none ${
-                    deductGiveMoney ? 'bg-purple-600' : 'bg-gray-300'
+                    deductGiveMoney ? 'bg-purple-600' : 'bg-muted'
                   }`}
                 >
                   <span
@@ -691,18 +746,18 @@ export function SalaryProfile() {
             </div>
           )}
 
-          {/* Give/Take Money Deduction section */}
+          {/* Give Money Deduction toggle */}
           {giveMoneyBalance > 0 && (
-            <div className="rounded-xl border border-border p-4 space-y-3">
+            <div className="rounded-xl border border-border p-4">
               <div className="flex items-center justify-between">
                 <div className="flex-1 pr-4">
-                  <p className="text-sm font-bold text-purple-900">Deduct Give Money</p>
-                  <p className="text-xs text-purple-600 mt-0.5">Available: {formatCurrency(giveMoneyBalance)}</p>
+                  <p className="text-sm font-bold text-purple-400">Deduct Give Money</p>
+                  <p className="text-xs text-purple-500 mt-0.5">Available: {formatCurrency(giveMoneyBalance)}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setAdjDeductGiveMoney(v => !v)}
-                  className={`flex items-center w-11 h-6 p-1 rounded-full transition-colors duration-200 outline-none ${adjDeductGiveMoney ? 'bg-purple-600' : 'bg-gray-300'}`}
+                  className={`flex items-center w-11 h-6 p-1 rounded-full transition-colors duration-200 outline-none ${adjDeductGiveMoney ? 'bg-purple-600' : 'bg-muted'}`}
                 >
                   <span className={`w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${adjDeductGiveMoney ? 'translate-x-5' : 'translate-x-0'}`} />
                 </button>
@@ -714,13 +769,14 @@ export function SalaryProfile() {
           <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-4 space-y-2">
             <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-2">Live Summary</p>
             {(() => {
-              const addedDue = adjAddDue ? Math.min(adjDueAmount, dueMoney) : 0;
-              const deductedAdv = adjDeductAdvance ? Math.min(adjAdvanceAmount, advanceSalary) : 0;
-              
-              const unified = calculateUnifiedSalary({
+              const addedDue  = adjAddDue ? Math.min(adjDueAmount, dueMoney) : 0;
+              const adjAdvBal = adjDeductAdvance ? advanceSalary : 0;
+
+              const mEngine = calculateSalaryEngine({
                 generatedSalary: calculatedSalary,
+                bonus: watchedBonus,
                 previousDue: addedDue,
-                advanceDeduction: deductedAdv,
+                advanceBalance: adjAdvBal,
                 giveMoneyAmount: giveMoneyBalance,
                 deductGiveMoney: adjDeductGiveMoney
               });
@@ -731,32 +787,42 @@ export function SalaryProfile() {
                     <span className="text-muted-foreground">Generated Salary</span>
                     <span className="font-semibold">{formatCurrency(calculatedSalary)}</span>
                   </div>
+                  {watchedBonus > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">+ Bonus</span>
+                      <span className="font-semibold text-emerald-500">+{formatCurrency(watchedBonus)}</span>
+                    </div>
+                  )}
                   {adjAddDue && addedDue > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">+ Previous Due</span>
                       <span className="font-semibold text-emerald-500">+{formatCurrency(addedDue)}</span>
                     </div>
                   )}
-                  {adjDeductAdvance && deductedAdv > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">- Advance Deduction</span>
-                      <span className="font-semibold text-rose-500">-{formatCurrency(deductedAdv)}</span>
-                    </div>
-                  )}
+                  <div className="flex justify-between text-sm pt-1 border-t border-indigo-500/10">
+                    <span className="font-semibold text-foreground">Gross Salary</span>
+                    <span className="font-semibold text-foreground">{formatCurrency(mEngine.grossSalary)}</span>
+                  </div>
                   {giveMoneyBalance > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">
-                        {adjDeductGiveMoney ? "Give Money Deduction" : "Give Money Added"}
+                        {adjDeductGiveMoney ? 'Give Money Deduction' : 'Extra Money Added'}
                       </span>
                       <span className={`font-semibold ${adjDeductGiveMoney ? 'text-rose-500' : 'text-purple-500'}`}>
-                        {adjDeductGiveMoney ? "-" : "+"}{formatCurrency(giveMoneyBalance)}
+                        {adjDeductGiveMoney ? '-' : '+'}{formatCurrency(giveMoneyBalance)}
                       </span>
+                    </div>
+                  )}
+                  {mEngine.advanceRecovery > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Advance Recovery</span>
+                      <span className="font-semibold text-rose-500">-{formatCurrency(mEngine.advanceRecovery)}</span>
                     </div>
                   )}
                   <div className="pt-2 border-t border-indigo-500/20 flex justify-between items-center">
                     <span className="font-bold text-foreground text-xs uppercase tracking-widest">Final Payable</span>
                     <span className="text-xl font-extrabold text-indigo-500">
-                      {formatCurrency(unified.finalPayable)}
+                      {formatCurrency(mEngine.finalPayable)}
                     </span>
                   </div>
                 </>
