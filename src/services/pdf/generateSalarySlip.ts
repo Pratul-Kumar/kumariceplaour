@@ -151,8 +151,17 @@ export async function generateSalarySlip(
   // ════════════════════════════════════════════════════════
   // 3. SALARY DETAILS
   // ════════════════════════════════════════════════════════
+  let rowCount = 4; // Header, Salary Earned, Total Salary, Employee Gets
+  if (calcResult.bonus > 0) rowCount++;
+  if (calcResult.previousDue > 0) rowCount++;
+  if (calcResult.giveMoneyDeducted > 0) rowCount++;
+  else if (calcResult.giveMoneyAdded > 0) rowCount += 2; // Money Already Given (0) + Extra Money Added
+  if (calcResult.previousAdvance > 0 || calcResult.advanceRecovery > 0) rowCount++;
+
+  const cardHeight = 12 + rowCount * 5;
+
   doc.setFillColor(248, 250, 252);
-  doc.roundedRect(COL_L, y, W - 30, 48, 2, 2, "F");
+  doc.roundedRect(COL_L, y, W - 30, cardHeight, 2, 2, "F");
   
   let sy = y + 7;
   doc.setFont("helvetica", "bold");
@@ -165,35 +174,46 @@ export async function generateSalarySlip(
   doc.setFontSize(8.5);
   doc.text("Salary Earned", COL_L + 4, sy);
   doc.text(pdfCurrency(calcResult.generatedSalary), W - 19, sy, { align: "right" });
+  sy += 5;
   
-  sy += 5;
-  doc.text("Bonus", COL_L + 4, sy);
-  doc.text(pdfCurrency(calcResult.bonus), W - 19, sy, { align: "right" });
+  if (calcResult.bonus > 0) {
+    doc.text("Bonus", COL_L + 4, sy);
+    doc.text(pdfCurrency(calcResult.bonus), W - 19, sy, { align: "right" });
+    sy += 5;
+  }
 
-  sy += 5;
-  doc.text("Previous Due", COL_L + 4, sy);
-  doc.text(pdfCurrency(calcResult.previousDue), W - 19, sy, { align: "right" });
+  if (calcResult.previousDue > 0) {
+    doc.text("Previous Due", COL_L + 4, sy);
+    doc.text(pdfCurrency(calcResult.previousDue), W - 19, sy, { align: "right" });
+    sy += 5;
+  }
 
-  sy += 5;
   doc.setFont("helvetica", "bold");
   doc.text("Total Salary", COL_L + 4, sy);
   doc.text(pdfCurrency(calcResult.grossSalary), W - 19, sy, { align: "right" });
-  
   sy += 5;
+  
   doc.setFont("helvetica", "normal");
   if (calcResult.giveMoneyDeducted > 0) {
     doc.text("Money Already Given", COL_L + 4, sy);
     doc.text(`-${pdfCurrency(calcResult.giveMoneyDeducted)}`, W - 19, sy, { align: "right" });
+    sy += 5;
   } else if (calcResult.giveMoneyAdded > 0) {
+    doc.text("Money Already Given", COL_L + 4, sy);
+    doc.text(`-${pdfCurrency(0)}`, W - 19, sy, { align: "right" });
+    sy += 5;
     doc.text("Extra Money Added", COL_L + 4, sy);
     doc.text(`+${pdfCurrency(calcResult.giveMoneyAdded)}`, W - 19, sy, { align: "right" });
+    sy += 5;
   }
 
-  sy += 5;
-  doc.text("Used Against Advance", COL_L + 4, sy);
-  doc.text(`-${pdfCurrency(calcResult.advanceRecovery)}`, W - 19, sy, { align: "right" });
+  if (calcResult.previousAdvance > 0 || calcResult.advanceRecovery > 0) {
+    doc.text("Used Against Advance", COL_L + 4, sy);
+    doc.text(`-${pdfCurrency(calcResult.advanceRecovery)}`, W - 19, sy, { align: "right" });
+    sy += 5;
+  }
 
-  sy += 6;
+  sy = sy - 5 + 6;
   doc.setDrawColor(226, 232, 240);
   doc.line(COL_L + 4, sy, W - 19, sy);
   
@@ -204,38 +224,40 @@ export async function generateSalarySlip(
   doc.text("Employee Gets", COL_L + 4, sy);
   doc.text(pdfCurrency(calcResult.employeeReceives), W - 19, sy, { align: "right" });
 
-  y += 56;
+  y += cardHeight + 8;
 
   // ════════════════════════════════════════════════════════
   // 4. ADVANCE DETAILS
   // ════════════════════════════════════════════════════════
-  doc.setFillColor(255, 247, 237);
-  doc.roundedRect(COL_L, y, W - 30, 28, 2, 2, "F");
+  if (calcResult.previousAdvance > 0) {
+    doc.setFillColor(255, 247, 237);
+    doc.roundedRect(COL_L, y, W - 30, 28, 2, 2, "F");
 
-  let ay = y + 7;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(15, 23, 42);
-  doc.text("ADVANCE DETAILS", COL_L + 4, ay);
-  
-  ay += 8;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
-  doc.text("Previous Advance", COL_L + 4, ay);
-  doc.text(pdfCurrency(calcResult.previousAdvance), W - 19, ay, { align: "right" });
-  
-  ay += 5;
-  doc.text("Less This Month", COL_L + 4, ay);
-  doc.text(`-${pdfCurrency(calcResult.advanceRecovery)}`, W - 19, ay, { align: "right" });
+    let ay = y + 7;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text("ADVANCE DETAILS", COL_L + 4, ay);
+    
+    ay += 8;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.text("Previous Advance", COL_L + 4, ay);
+    doc.text(pdfCurrency(calcResult.previousAdvance), W - 19, ay, { align: "right" });
+    
+    ay += 5;
+    doc.text("Less This Month", COL_L + 4, ay);
+    doc.text(`-${pdfCurrency(calcResult.advanceRecovery)}`, W - 19, ay, { align: "right" });
 
-  ay += 6;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(234, 88, 12); // Orange
-  doc.text("Advance Remaining", COL_L + 4, ay);
-  doc.text(pdfCurrency(calcResult.remainingAdvance), W - 19, ay, { align: "right" });
+    ay += 6;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(234, 88, 12); // Orange
+    doc.text("Advance Remaining", COL_L + 4, ay);
+    doc.text(pdfCurrency(calcResult.remainingAdvance), W - 19, ay, { align: "right" });
 
-  y += 36;
+    y += 36;
+  }
 
   // ════════════════════════════════════════════════════════
   // 5. DUE DETAILS (If Any)
