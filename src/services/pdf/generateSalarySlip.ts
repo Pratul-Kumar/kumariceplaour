@@ -95,9 +95,9 @@ export async function generateSalarySlip(
   let statusText = "PENDING";
   if (currentPaid >= calcResult.finalPayable && calcResult.finalPayable > 0) statusText = "FULLY PAID";
   else if (currentPaid > 0) statusText = "PARTIAL PAID";
-  else if (calcResult.finalPayable === 0) statusText = "SETTLED";
+  else if (calcResult.finalPayable === 0) statusText = "FULLY ADJUSTED";
   
-  if (statusText === "FULLY PAID" || statusText === "SETTLED") doc.setTextColor(16, 185, 129);
+  if (statusText === "FULLY PAID" || statusText === "FULLY ADJUSTED") doc.setTextColor(16, 185, 129);
   else if (statusText === "PARTIAL PAID") doc.setTextColor(245, 158, 11);
   else doc.setTextColor(239, 68, 68);
   doc.text(statusText, rightValX, y + 10, { align: "right" });
