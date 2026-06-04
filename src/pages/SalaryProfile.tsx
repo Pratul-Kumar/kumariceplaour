@@ -364,38 +364,48 @@ export function SalaryProfile() {
         else if (r.status === 'half_day') hDays++;
       });
       
-      const ledgerEntries = await ledgerService.getByStaff(staff.id!);
       const duesHistory = await dueService.getByStaff(staff.id!);
-      
-      const baseCalc = calculateGeneratedSalary({
-        staff,
-        attendanceRecords: attRecords,
-        workingDaysInMonth: workingDays,
-        extraDeduction: record.extraDeduction || 0,
-      });
 
-      const giveMoneyAmount = Math.max(0, (record.giveMoneyDeducted || 0) + (record.giveMoneyAdded || 0));
-      const advanceBeforeRaw = record.salaryRollbackSnapshot?.advanceBefore || staff.advanceBalance || staff.outstandingBalance || 0;
-      const advanceBefore = Math.max(0, advanceBeforeRaw);
+      const pdfData = {
+        advanceBefore: record.salaryRollbackSnapshot?.advanceBefore ?? record.outstandingBefore ?? 0,
+        giveMoneyBalance: record.salaryRollbackSnapshot?.giveMoneyBefore ?? (record.giveMoneyDeducted || 0) + (record.giveMoneyAdded || 0),
+        previousDue: record.salaryRollbackSnapshot?.dueBefore ?? record.previousDue ?? 0
+      };
 
-      const rawGeneratedSalary = record.generatedSalary ?? baseCalc.generatedSalary;
+      const uiData = {
+        advanceBefore: record.salaryRollbackSnapshot?.advanceBefore ?? record.outstandingBefore ?? 0,
+        giveMoneyBalance: record.salaryRollbackSnapshot?.giveMoneyBefore ?? (record.giveMoneyDeducted || 0) + (record.giveMoneyAdded || 0),
+        previousDue: record.salaryRollbackSnapshot?.dueBefore ?? record.previousDue ?? 0
+      };
 
-      const engineResult = calculateSalaryEngine({
-        generatedSalary: rawGeneratedSalary,
-        bonus: record.bonus || 0,
-        previousDue: record.previousDue || 0,
-        advanceBalance: advanceBefore,
-        giveMoneyAmount: giveMoneyAmount,
-        deductGiveMoney: record.deductGiveMoney ?? true
-      });
+      if (
+        pdfData.advanceBefore !== uiData.advanceBefore ||
+        pdfData.giveMoneyBalance !== uiData.giveMoneyBalance ||
+        pdfData.previousDue !== uiData.previousDue
+      ) {
+        throw new Error(
+          "PDF data mismatch with Salary Screen"
+        );
+      }
+
+      const rawGeneratedSalary = record.generatedSalary ?? (record.grossSalary ?? record.finalSalary) - (record.bonus || 0) - (record.previousDue || 0);
+      const grossSalary = record.grossSalary ?? (rawGeneratedSalary + (record.bonus || 0) + (record.previousDue || 0));
+      const advanceRecovery = record.advance ?? 0;
+      const remainingAdvance = Math.max(0, pdfData.advanceBefore - advanceRecovery);
 
       const calcResult = {
-        ...engineResult,
         generatedSalary: rawGeneratedSalary,
         bonus: record.bonus || 0,
         previousDue: record.previousDue || 0,
-        previousAdvance: advanceBefore,
-        remainingAdvance: Math.max(0, advanceBefore - engineResult.advanceRecovery)
+        grossSalary: grossSalary,
+        giveMoneyDeducted: record.giveMoneyDeducted ?? 0,
+        giveMoneyAdded: record.giveMoneyAdded ?? 0,
+        netAvailable: Math.max(0, grossSalary - (record.giveMoneyDeducted ?? 0)),
+        advanceRecovery: advanceRecovery,
+        remainingAdvance: remainingAdvance,
+        employeeReceives: record.finalSalary,
+        finalPayable: record.finalSalary,
+        previousAdvance: pdfData.advanceBefore,
       };
       
       generateSalarySlip(
@@ -406,9 +416,9 @@ export function SalaryProfile() {
         calcResult,
         duesHistory
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast({ type: "error", title: "Could not generate slip", description: "Try again." });
+      toast({ type: "error", title: "Could not generate slip", description: err.message || "Try again." });
     }
   };
 
